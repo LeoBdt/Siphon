@@ -11,9 +11,18 @@ import { filesRoutes } from "./routes/files.js";
 import { systemRoutes } from "./routes/system.js";
 import { wsRoutes } from "./routes/ws.js";
 import { startYtdlpAutoUpdate } from "./lib/ytdlp-autoupdate.js";
+import { authHook } from "./auth/guard.js";
+import { authRoutes } from "./routes/auth.js";
+import { adminRoutes } from "./routes/admin.js";
+import { pruneSessions } from "./auth/store.js";
+import { pruneAudit } from "./auth/audit.js";
 
 async function buildServer() {
   const app = Fastify({
+    // Behind the proxy every request arrives from the proxy container, so
+    // without this `req.ip` is the same value for everyone — and the login
+    // throttle would count the whole internet as a single client.
+    trustProxy: true,
     logger: {
       transport: {
         target: "pino-pretty",
@@ -22,7 +31,9 @@ async function buildServer() {
     },
   });
 
-  await app.register(cors, { origin: config.webOrigin });
+  // `credentials` so the session cookie survives the cross-origin fetches the
+  // development setup makes; behind the proxy everything is same-origin anyway.
+  await app.register(cors, { origin: config.webOrigin, credentials: true });
   await app.register(websocket);
 
   // Body-less POSTs (retry / cancel / yt-dlp update) may arrive with an empty
@@ -58,6 +69,11 @@ async function buildServer() {
     time: new Date().toISOString(),
   }));
 
+  // Registered before the guard's routes so the hook below covers them all.
+  app.addHook("preHandler", authHook);
+
+  await app.register(authRoutes);
+  await app.register(adminRoutes);
   await app.register(downloadsRoutes);
   await app.register(filesRoutes);
   await app.register(systemRoutes);
@@ -74,6 +90,8 @@ async function main() {
   // Requeue jobs left mid-flight by a previous crash/restart, then re-enqueue
   // them so they resume; sweep stale temp artifacts in the background.
   reconcileOnBoot();
+  pruneSessions();
+  pruneAudit();
   const resumed = resumeInterruptedJobs();
 
   const app = await buildServer();

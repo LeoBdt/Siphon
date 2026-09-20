@@ -77,12 +77,22 @@ export function I18nProvider({
   const errorMessage = useCallback(
     (e: unknown) => {
       if (e instanceof ApiError && e.code && e.code in t.apiErrors) {
+        // A locked account gets the hour it reopens: "a few minutes" leaves
+        // the person guessing, and guessing means trying again too soon.
+        if (e.code === "account_locked" && e.lockedUntil) {
+          return t.apiErrors.accountLockedUntil(
+            new Date(e.lockedUntil).toLocaleTimeString(intlLocale(locale), {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+          );
+        }
         return t.apiErrors[e.code];
       }
       if (e instanceof Error && e.message) return e.message;
       return t.common.error;
     },
-    [t],
+    [t, locale],
   );
 
   return (

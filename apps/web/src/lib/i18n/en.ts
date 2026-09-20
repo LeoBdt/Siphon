@@ -14,6 +14,29 @@ export const en = {
     dizzy: "Frenglish",
   },
 
+  auth: {
+    signInTitle: "Sign in",
+    signInSubtitle: "This instance is private.",
+    setupTitle: "Welcome to Siphon",
+    setupSubtitle:
+      "Create the administrator account. There is no default password — you choose it now.",
+    inviteTitle: "Join this instance",
+    inviteSubtitle: (group: string) => `You have been invited as ${group}.`,
+    inviteInvalid: "This invitation has expired or has already been used.",
+    username: "Username",
+    code: "Authentication code",
+    codeHint: "The six digits from your authenticator app.",
+    password: "Password",
+    passwordHint: (min: number) => `At least ${min} characters.`,
+    submitSignIn: "Sign in",
+    submitSetup: "Create account",
+    submitInvite: "Create my account",
+    signOut: "Sign out",
+    checking: "Checking…",
+    privacyRevoked:
+      "Your folder is no longer private: an administrator withdrew the permission.",
+  },
+
   nav: {
     download: "Download",
     files: "Files",
@@ -155,6 +178,7 @@ export const en = {
       downloads: "Downloads",
       storage: "Storage",
       engine: "Engine",
+      accounts: "Accounts",
     },
 
     concurrency: {
@@ -198,6 +222,95 @@ export const en = {
       autoHint: "On start, then once a day. Updates apply immediately.",
       on: "On",
       off: "Off",
+    },
+
+    accounts: {
+      title: "Accounts",
+      members: "Members",
+      membersHint: "People with access to this instance.",
+      groups: "Groups",
+      groupsHint:
+        "A group sets the defaults. Anything set on a member overrides them.",
+      invite: "Invite someone",
+      inviteHint:
+        "The link carries the address you are using right now — open Siphon on the address you want to share before creating one.",
+      inviteCopied: "Invitation link copied",
+      inviteExpires: (when: string) => `Expires ${when}`,
+      revoke: "Revoke",
+      you: "you",
+      lastSeen: (when: string) => `Last seen ${when}`,
+      neverSignedIn: "Never signed in",
+      newGroup: "New group",
+      groupName: "Group name",
+      inherited: "From group",
+      deleteMember: "Remove this member",
+      suspend: "Suspend",
+      lockedBySystem: (when: string) =>
+        `Locked by the system until ${when} — too many failed sign-ins`,
+      unlock: "Unlock",
+      unsuspend: "Restore access",
+      suspended: "Suspended",
+      deleteTitle: (name: string) => `Delete ${name}?`,
+      deleteWarning:
+        "This removes the account and everything in its folder. Downloads already in the shared library are untouched. This cannot be undone.",
+      deleteConfirm: (name: string) => `Type ${name} to confirm`,
+      deleteAction: "Delete permanently",
+      deleted: "Account deleted",
+      permissions: {
+        canDownload: "Download",
+        canKeepInLibrary: "Keep files in the library",
+        canManageFiles: "Rename, move and delete files",
+        canManageSettings: "Change application settings",
+        canHavePrivateFolder: "May keep a private folder",
+        canBrowseWholeLibrary: "See the whole library",
+        isAdmin: "Administrator",
+      },
+    },
+
+    privacy: {
+      title: "Private folder",
+      description:
+        "Hides your folder from other members in this interface. It is discretion, not secrecy: whoever runs the server still reaches the files on disk.",
+      unavailable: "An administrator has not granted this permission.",
+    },
+
+    security: {
+      title: "Second factor",
+      description:
+        "Ask for a six-digit code from an authenticator app when signing in.",
+      enabled: "Enabled",
+      start: "Set up",
+      secretHint:
+        "Add this secret to your authenticator app, then enter the code it shows to confirm it works.",
+      confirm: "Confirm",
+      disable: "Turn off",
+      disableHint: "Enter your password to turn it off.",
+      turnedOn: "Second factor enabled",
+      turnedOff: "Second factor turned off",
+    },
+
+    audit: {
+      title: "Activity",
+      description: "Sign-ins and changes made to this instance.",
+      empty: "Nothing recorded yet.",
+      actions: {
+        "login.success": "Signed in",
+        "login.failed": "Failed sign-in",
+        "login.locked": "Account locked",
+        logout: "Signed out",
+        "user.created": "Member added",
+        "user.updated": "Member changed",
+        "user.deleted": "Member removed",
+        "group.created": "Group created",
+        "group.updated": "Group changed",
+        "group.deleted": "Group deleted",
+        "invite.created": "Invitation created",
+        "invite.revoked": "Invitation revoked",
+        "privacy.revoked": "Private folder revoked",
+        "totp.enabled": "Second factor enabled",
+        "totp.disabled": "Second factor turned off",
+        "password.changed": "Password changed",
+      },
     },
 
     language: {
@@ -272,6 +385,24 @@ export const en = {
 
   // Errors the API returns about the request itself, keyed by its `code`.
   apiErrors: {
+    accountLockedUntil: (when: string) =>
+      `Too many failed attempts. This account is locked until ${when}.`,
+    account_suspended: "This account has been suspended by an administrator.",
+    csrf_failed: "That request could not be verified. Reload and try again.",
+    account_locked:
+      "Too many failed attempts. This account is locked for a few minutes.",
+    totp_required: "Enter the code from your authenticator app.",
+    totp_invalid: "That authentication code is not right.",
+    unauthenticated: "Please sign in.",
+    forbidden: "You do not have permission to do that.",
+    invalid_credentials: "Wrong username or password.",
+    weak_password: "That password is too short.",
+    too_many_attempts: "Too many attempts. Try again in a few minutes.",
+    already_setup: "This instance is already configured.",
+    last_admin: "This is the only administrator.",
+    self_delete: "You cannot delete your own account.",
+    group_in_use: "Built-in groups, and groups with members, cannot be deleted.",
+    invalid_name: "A name is required.",
     downloads_active: "Downloads are running — try again once they finish.",
     concurrency_out_of_range: "That value is out of the allowed range.",
     already_exists: "A file or folder with that name already exists.",

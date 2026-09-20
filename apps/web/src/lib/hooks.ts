@@ -7,6 +7,14 @@ import {
 } from "@tanstack/react-query";
 import type {
   AppSettings,
+  AuditEntry,
+  AuthState,
+  Invite,
+  Credentials,
+  Group,
+  PermissionOverrides,
+  Permissions,
+  User,
   CleanupResult,
   CreateDownloadRequest,
   DiskUsage,
@@ -189,5 +197,231 @@ export function useUpdateYtdlp() {
         method: "POST",
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ytdlp"] }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Accounts
+// ---------------------------------------------------------------------------
+
+export function useAuthState() {
+  return useQuery({
+    queryKey: ["auth"],
+    // Never cached: this decides whether the app is reachable at all.
+    staleTime: 0,
+    retry: false,
+    queryFn: () => apiFetch<AuthState>("/api/auth/state"),
+  });
+}
+
+function useAuthMutation(path: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Credentials & { code?: string }) =>
+      apiFetch<User>(path, { method: "POST", body: JSON.stringify(body) }),
+    // Everything on screen was fetched as the previous visitor — or as nobody.
+    onSuccess: () => qc.invalidateQueries(),
+  });
+}
+
+export const useLogin = () => useAuthMutation("/api/auth/login");
+export const useSetup = () => useAuthMutation("/api/auth/setup");
+
+export function useDismissNotice() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiFetch("/api/auth/notice/dismiss", { method: "POST" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["auth"] }),
+  });
+}
+
+export function useLogout() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiFetch("/api/auth/logout", { method: "POST" }),
+    onSuccess: () => qc.invalidateQueries(),
+  });
+}
+
+export function useUsers() {
+  return useQuery({
+    queryKey: ["users"],
+    queryFn: () => apiFetch<User[]>("/api/admin/users"),
+  });
+}
+
+export function useGroups() {
+  return useQuery({
+    queryKey: ["groups"],
+    queryFn: () => apiFetch<Group[]>("/api/admin/groups"),
+  });
+}
+
+interface UserPayload {
+  username?: string;
+  password?: string;
+  groupId?: string;
+  overrides?: Partial<PermissionOverrides>;
+}
+
+export function useSaveUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: UserPayload & { id?: string }) =>
+      apiFetch<User>(id ? `/api/admin/users/${id}` : "/api/admin/users", {
+        method: id ? "PATCH" : "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["users"] });
+      qc.invalidateQueries({ queryKey: ["groups"] });
+      qc.invalidateQueries({ queryKey: ["auth"] });
+    },
+  });
+}
+
+export function useDeleteUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      fetch(apiUrl(`/api/admin/users/${id}`), {
+        method: "DELETE",
+        credentials: "include",
+      }).then((r) => {
+        if (!r.ok && r.status !== 204) throw new Error("Delete failed");
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["users"] });
+      qc.invalidateQueries({ queryKey: ["groups"] });
+    },
+  });
+}
+
+export function useSaveGroup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      ...body
+    }: {
+      id?: string;
+      name?: string;
+      permissions?: Partial<Permissions>;
+    }) =>
+      apiFetch<Group>(id ? `/api/admin/groups/${id}` : "/api/admin/groups", {
+        method: id ? "PATCH" : "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["groups"] });
+      qc.invalidateQueries({ queryKey: ["users"] });
+    },
+  });
+}
+
+export function useInvites() {
+  return useQuery({
+    queryKey: ["invites"],
+    queryFn: () => apiFetch<Invite[]>("/api/admin/invites"),
+  });
+}
+
+export function useCreateInvite() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (groupId: string) =>
+      apiFetch<Invite>("/api/admin/invites", {
+        method: "POST",
+        body: JSON.stringify({ groupId }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["invites"] }),
+  });
+}
+
+export function useRevokeInvite() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (token: string) =>
+      fetch(apiUrl(`/api/admin/invites/${token}`), {
+        method: "DELETE",
+        credentials: "include",
+      }).then((r) => {
+        if (!r.ok && r.status !== 204) throw new Error("Revoke failed");
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["invites"] }),
+  });
+}
+
+/** Turn one's own folder privacy on or off. */
+export function useSetPrivateFolder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) =>
+      apiFetch<User>("/api/auth/private-folder", {
+        method: "POST",
+        body: JSON.stringify({ enabled }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["auth"] }),
+  });
+}
+
+export function useSuspendUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, suspended }: { id: string; suspended: boolean }) =>
+      apiFetch<User>(`/api/admin/users/${id}/suspend`, {
+        method: "POST",
+        body: JSON.stringify({ suspended }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
+  });
+}
+
+export function useAudit() {
+  return useQuery({
+    queryKey: ["audit"],
+    queryFn: () => apiFetch<AuditEntry[]>("/api/admin/audit?limit=100"),
+  });
+}
+
+export function useUnlockUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<User>(`/api/admin/users/${id}/unlock`, { method: "POST" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
+  });
+}
+
+export function useTotpSetup() {
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<{ secret: string; uri: string }>("/api/auth/totp/setup", {
+        method: "POST",
+      }),
+  });
+}
+
+export function useTotpEnable() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (code: string) =>
+      apiFetch("/api/auth/totp/enable", {
+        method: "POST",
+        body: JSON.stringify({ code }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["auth"] }),
+  });
+}
+
+export function useTotpDisable() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (password: string) =>
+      apiFetch("/api/auth/totp/disable", {
+        method: "POST",
+        body: JSON.stringify({ password }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["auth"] }),
   });
 }

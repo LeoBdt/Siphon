@@ -218,6 +218,21 @@ export interface AppSettings {
  * a plain-English `error` string as a fallback for non-UI clients.
  */
 export type ApiErrorCode =
+  | "unauthenticated"
+  | "account_locked"
+  | "totp_required"
+  | "totp_invalid"
+  | "csrf_failed"
+  | "account_suspended"
+  | "forbidden"
+  | "invalid_credentials"
+  | "weak_password"
+  | "too_many_attempts"
+  | "already_setup"
+  | "last_admin"
+  | "self_delete"
+  | "group_in_use"
+  | "invalid_name"
   | "downloads_active"
   | "concurrency_out_of_range"
   | "already_exists"
@@ -255,3 +270,184 @@ export interface YtdlpUpdateResult {
   version: string | null;
   message: string;
 }
+
+// ---------------------------------------------------------------------------
+// Accounts, groups and permissions
+// ---------------------------------------------------------------------------
+
+/**
+ * What a member is allowed to do.
+ *
+ * Every field is resolved from the user's group, then overridden per user where
+ * that user carries an explicit value. Keeping the two layers apart is what
+ * makes editing a group take effect for everyone who has not been singled out.
+ */
+export interface Permissions {
+  /** Start downloads at all. */
+  canDownload: boolean;
+  /** Keep finished files in the library, rather than only fetching them once. */
+  canKeepInLibrary: boolean;
+  /** Rename, move and delete inside the library. */
+  canManageFiles: boolean;
+  /** Read and change application settings (concurrency, cleanup, yt-dlp). */
+  canManageSettings: boolean;
+  /** Administer members and groups. Implies every other permission. */
+  isAdmin: boolean;
+  /**
+   * Hide their personal folder from everyone else in the interface.
+   *
+   * Discretion, not secrecy: whoever runs the server still reaches the files
+   * through the disk, the volume or the database. The interface says so.
+   */
+  canHavePrivateFolder: boolean;
+  /**
+   * See the whole library instead of a private folder of their own. Granted to
+   * the first account so an existing library stays visible after upgrading.
+   */
+  canBrowseWholeLibrary: boolean;
+  /** Downloads this member may run at once. Null means the global setting. */
+  maxConcurrentDownloads: number | null;
+  /** Bytes this member's files may occupy. Null means no quota. */
+  quotaBytes: number | null;
+}
+
+/** A per-user override: null on a field means "inherit from the group". */
+export type PermissionOverrides = {
+  [K in keyof Permissions]: Permissions[K] | null;
+};
+
+export interface Group {
+  id: string;
+  name: string;
+  /** Built-in groups cannot be deleted, and Administrators cannot be demoted. */
+  builtIn: boolean;
+  permissions: Permissions;
+  memberCount: number;
+}
+
+export interface User {
+  id: string;
+  username: string;
+  groupId: string;
+  groupName: string;
+  /** Only the fields this user overrides; the rest come from the group. */
+  overrides: PermissionOverrides;
+  /** Group defaults with the overrides applied — what actually applies. */
+  effective: Permissions;
+  /** Whether this member has actually turned privacy on. */
+  privateFolder: boolean;
+  /** Whether a second factor is required to sign in. */
+  totpEnabled: boolean;
+  /**
+   * Shut out by an administrator, as opposed to locked by failed attempts.
+   * Indefinite, and lifted only by an administrator.
+   */
+  suspended: boolean;
+  /**
+   * Locked by the system after repeated failed sign-ins, until this moment.
+   * Null when open. Deliberately separate from `suspended`: one is a counter
+   * running out, the other is a decision somebody made.
+   */
+  lockedUntil: string | null;
+  /** Folder holding this member's files, relative to the library root. */
+  libraryDir: string;
+  createdAt: string;
+  lastSeenAt: string | null;
+}
+
+/**
+ * Something the member needs to be told once, on their next visit.
+ *
+ * `privacy_revoked` matters: a folder they believed private stopped being so
+ * because an administrator withdrew the permission, and finding that out by
+ * accident would be worse than a notice.
+ */
+export type UserNotice = "privacy_revoked";
+
+/** Whether the instance still needs its first account, and who is signed in. */
+export interface AuthState {
+  needsSetup: boolean;
+  user: User | null;
+  notice: UserNotice | null;
+}
+
+/**
+ * An unused invitation.
+ *
+ * Members are added by invitation rather than created outright: the person
+ * chooses their own username and password, and an administrator never handles
+ * someone else's credentials.
+ */
+export interface Invite {
+  token: string;
+  groupId: string;
+  groupName: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
+/** What an invitee sees before accepting, without revealing anything else. */
+export interface InvitePreview {
+  valid: boolean;
+  groupName: string | null;
+}
+
+export interface Credentials {
+  username: string;
+  password: string;
+}
+
+/**
+ * A recorded action, for the audit trail.
+ *
+ * Kept as codes rather than sentences so the log reads in the viewer's
+ * language, and so entries stay searchable when the wording changes.
+ */
+export type AuditAction =
+  | "login.success"
+  | "login.failed"
+  | "login.locked"
+  | "logout"
+  | "user.created"
+  | "user.updated"
+  | "user.deleted"
+  | "group.created"
+  | "group.updated"
+  | "group.deleted"
+  | "invite.created"
+  | "invite.revoked"
+  | "privacy.revoked"
+  | "totp.enabled"
+  | "totp.disabled"
+  | "password.changed";
+
+export interface AuditEntry {
+  id: number;
+  at: string;
+  action: AuditAction;
+  /** Who did it. Null for a failed sign-in with an unknown username. */
+  actorName: string | null;
+  /** What it was done to: a username, a group name, an invitation. */
+  target: string | null;
+  ip: string | null;
+}
+
+/** Why a sign-in was refused, when the reason is worth telling the user. */
+export interface LockedOut {
+  lockedUntil: string;
+}
+
+/** Where a finished download is kept. */
+export type RetentionMode = "library" | "direct";
+
+/**
+ * Minimum password length, enforced by the API and announced by the form.
+ *
+ * Length is the only requirement: composition rules push people towards
+ * predictable substitutions and a sticky note, and on a self-hosted instance
+ * the person choosing the password is the person carrying the risk.
+ */
+export const MIN_PASSWORD_LENGTH = 8;
+
+export const GROUP_ADMIN_ID = "admin";
+export const GROUP_MEMBER_ID = "member";

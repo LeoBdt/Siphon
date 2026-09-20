@@ -29,8 +29,9 @@
         --radius: 0.875rem;
         --ease: cubic-bezier(0.23, 1, 0.32, 1);
       }
+      /* The OS preference applies unless the visitor picked light explicitly. */
       @media (prefers-color-scheme: dark) {
-        :root {
+        :root:not([data-theme="light"]) {
           --bg: oklch(0.145 0 0);
           --fg: oklch(0.985 0 0);
           --muted: oklch(0.7 0 0);
@@ -41,6 +42,18 @@
           --term-bg: oklch(0.12 0 0);
           --term-fg: oklch(0.9 0 0);
         }
+      }
+      /* An explicit choice wins over the OS, in both directions. */
+      :root[data-theme="dark"] {
+        --bg: oklch(0.145 0 0);
+        --fg: oklch(0.985 0 0);
+        --muted: oklch(0.7 0 0);
+        --surface: oklch(0.2 0 0);
+        --border: oklch(1 0 0 / 11%);
+        --accent: oklch(0.95 0 0);
+        --accent-fg: oklch(0.2 0 0);
+        --term-bg: oklch(0.12 0 0);
+        --term-fg: oklch(0.9 0 0);
       }
 
       *,
@@ -131,6 +144,45 @@
       @media (max-width: 36rem) {
         .bar nav .hide-sm {
           display: none;
+        }
+      }
+
+      .theme {
+        display: flex;
+        padding: 0.4rem;
+        border: 1px solid var(--border);
+        border-radius: 0.6rem;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+        transition:
+          color 150ms var(--ease),
+          border-color 150ms var(--ease);
+      }
+      .theme:hover {
+        color: var(--fg);
+        border-color: color-mix(in oklch, var(--fg) 28%, transparent);
+      }
+      .theme svg {
+        width: 1.05rem;
+        height: 1.05rem;
+      }
+      /* One icon, two halves: whichever theme is active hides its own glyph. */
+      .theme .moon {
+        display: none;
+      }
+      :root[data-theme="dark"] .theme .sun {
+        display: none;
+      }
+      :root[data-theme="dark"] .theme .moon {
+        display: inline;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) .theme .sun {
+          display: none;
+        }
+        :root:not([data-theme="light"]) .theme .moon {
+          display: inline;
         }
       }
 
@@ -420,6 +472,16 @@
           <a class="hide-sm" href="#features">Features</a>
           <a href="#install">Install</a>
           <a href="https://github.com/LeoBdt/Siphon">GitHub</a>
+          <button class="theme" type="button" data-theme-toggle
+                  aria-label="Switch theme">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+              <path class="sun" d="M12 4V2M12 22v-2M4 12H2M22 12h-2M5.6 5.6 4.2 4.2M19.8 19.8l-1.4-1.4M18.4 5.6l1.4-1.4M4.2 19.8l1.4-1.4" />
+              <circle class="sun" cx="12" cy="12" r="4" />
+              <path class="moon" d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z" />
+            </svg>
+          </button>
         </nav>
       </div>
     </header>
@@ -528,7 +590,7 @@
             <button class="copy" type="button" data-copy>Copy</button>
           </div>
           <pre id="install-cmd"><span class="p">$</span> curl -O https://raw.githubusercontent.com/LeoBdt/Siphon/main/docker-compose.yml
-<span class="c"># optional: echo "SIPHON_PORT=9000" &gt; .env</span>
+<span class="c"># optional, if 8080 is taken: echo "SIPHON_PORT=8081" &gt; .env</span>
 <span class="p">$</span> docker compose up -d</pre>
         </div>
 
@@ -596,6 +658,27 @@
     </footer>
 
     <script>
+      // Theme: remembered per visitor, and only written when they actually
+      // choose — an untouched page keeps following the operating system.
+      const root = document.documentElement;
+      try {
+        const saved = localStorage.getItem("theme");
+        if (saved) root.dataset.theme = saved;
+      } catch {
+        // Private mode or blocked storage: the OS preference still applies.
+      }
+      document.querySelector("[data-theme-toggle]")?.addEventListener("click", () => {
+        const dark =
+          root.dataset.theme === "dark" ||
+          (!root.dataset.theme &&
+            matchMedia("(prefers-color-scheme: dark)").matches);
+        const next = dark ? "light" : "dark";
+        root.dataset.theme = next;
+        try {
+          localStorage.setItem("theme", next);
+        } catch {}
+      });
+
       // Copy the commands without the "$" prompts or the trailing comments.
       for (const button of document.querySelectorAll("[data-copy]")) {
         button.addEventListener("click", async () => {

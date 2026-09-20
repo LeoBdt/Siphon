@@ -8,6 +8,8 @@ import {
 } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { AppSidebar } from "@/components/app-sidebar";
+import { AuthGate } from "@/components/auth-gate";
+import { usePathname } from "next/navigation";
 import { usePlayer } from "@/components/player";
 import { cn } from "@/lib/utils";
 
@@ -17,10 +19,16 @@ import { cn } from "@/lib/utils";
  */
 export function AppShell({ children }: { children: ReactNode }) {
   const { audio } = usePlayer();
+  const pathname = usePathname();
+
+  // Accepting an invitation happens before there is an account, so it gets the
+  // bare page rather than the application chrome and its auth gate.
+  if (pathname.startsWith("/invite/")) return <>{children}</>;
   return (
     // `open={false}` pins the rail collapsed. The mobile drawer is a separate
     // state (openMobile), so SidebarTrigger still works on small screens.
-    <SidebarProvider open={false} onOpenChange={() => {}}>
+    <AuthGate>
+      <SidebarProvider open={false} onOpenChange={() => {}}>
       <AppSidebar />
       <SidebarInset>
         <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
@@ -39,6 +47,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           {children}
         </main>
       </SidebarInset>
-    </SidebarProvider>
+      </SidebarProvider>
+    </AuthGate>
   );
 }

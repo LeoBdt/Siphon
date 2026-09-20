@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Download, Folder, History, Settings } from "lucide-react";
+import { Download, Folder, History, LogOut, Settings } from "lucide-react";
 import { SiphonMark } from "@/components/siphon-mark";
 import { useT } from "@/components/i18n-provider";
+import { useLogout } from "@/lib/hooks";
 import {
   Sidebar,
   SidebarContent,
@@ -33,6 +34,7 @@ const TILE =
 export function AppSidebar() {
   const pathname = usePathname();
   const t = useT();
+  const logout = useLogout();
 
   return (
     // A fixed icon rail: no hover expansion, labels live in the tooltips.
@@ -79,7 +81,19 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="items-center">
+      <SidebarFooter className="items-center gap-1.5">
+        <SidebarMenuButton
+          tooltip={{
+            children: t.auth.signOut,
+            sideOffset: 10,
+            className: "px-2.5 py-1.5 font-medium shadow-lg",
+          }}
+          className={TILE}
+          onClick={() => logout.mutate()}
+        >
+          <LogOut />
+          <span className="sr-only">{t.auth.signOut}</span>
+        </SidebarMenuButton>
         <span className="text-[10px] tabular-nums text-muted-foreground">
           {VERSION}
         </span>

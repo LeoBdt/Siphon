@@ -12,6 +12,29 @@ export const fr: Dictionary = {
     dizzy: "Franglais",
   },
 
+  auth: {
+    signInTitle: "Connexion",
+    signInSubtitle: "Cette instance est privée.",
+    setupTitle: "Bienvenue sur Siphon",
+    setupSubtitle:
+      "Crée le compte administrateur. Il n'y a pas de mot de passe par défaut — tu le choisis maintenant.",
+    inviteTitle: "Rejoindre cette instance",
+    inviteSubtitle: (group: string) => `Tu es invité en tant que ${group}.`,
+    inviteInvalid: "Cette invitation a expiré ou a déjà été utilisée.",
+    username: "Identifiant",
+    code: "Code d'authentification",
+    codeHint: "Les six chiffres de ton application d'authentification.",
+    password: "Mot de passe",
+    passwordHint: (min: number) => `Au moins ${min} caractères.`,
+    submitSignIn: "Se connecter",
+    submitSetup: "Créer le compte",
+    submitInvite: "Créer mon compte",
+    signOut: "Se déconnecter",
+    checking: "Vérification…",
+    privacyRevoked:
+      "Ton dossier n'est plus privé : un administrateur a retiré la permission.",
+  },
+
   nav: {
     download: "Télécharger",
     files: "Fichiers",
@@ -155,6 +178,7 @@ export const fr: Dictionary = {
       downloads: "Téléchargements",
       storage: "Stockage",
       engine: "Moteur",
+      accounts: "Comptes",
     },
 
     concurrency: {
@@ -199,6 +223,95 @@ export const fr: Dictionary = {
         "Au démarrage, puis une fois par jour. La mise à jour s'applique aussitôt.",
       on: "Activé",
       off: "Désactivé",
+    },
+
+    accounts: {
+      title: "Comptes",
+      members: "Membres",
+      membersHint: "Les personnes ayant accès à cette instance.",
+      groups: "Groupes",
+      groupsHint:
+        "Un groupe définit les valeurs par défaut. Ce qui est réglé sur un membre les remplace.",
+      invite: "Inviter quelqu'un",
+      inviteHint:
+        "Le lien reprend l'adresse que tu utilises en ce moment — ouvre Siphon sur l'adresse que tu veux partager avant d'en créer un.",
+      inviteCopied: "Lien d'invitation copié",
+      inviteExpires: (when: string) => `Expire le ${when}`,
+      revoke: "Révoquer",
+      you: "toi",
+      lastSeen: (when: string) => `Vu le ${when}`,
+      neverSignedIn: "Jamais connecté",
+      newGroup: "Nouveau groupe",
+      groupName: "Nom du groupe",
+      inherited: "Du groupe",
+      deleteMember: "Retirer ce membre",
+      suspend: "Suspendre",
+      lockedBySystem: (when: string) =>
+        `Verrouillé par le système jusqu'à ${when} — trop d'échecs de connexion`,
+      unlock: "Déverrouiller",
+      unsuspend: "Rétablir l'accès",
+      suspended: "Suspendu",
+      deleteTitle: (name: string) => `Supprimer ${name} ?`,
+      deleteWarning:
+        "Le compte et tout le contenu de son dossier seront supprimés. Les téléchargements déjà dans la bibliothèque commune ne sont pas touchés. C'est irréversible.",
+      deleteConfirm: (name: string) => `Saisis ${name} pour confirmer`,
+      deleteAction: "Supprimer définitivement",
+      deleted: "Compte supprimé",
+      permissions: {
+        canDownload: "Télécharger",
+        canKeepInLibrary: "Conserver les fichiers dans la bibliothèque",
+        canManageFiles: "Renommer, déplacer et supprimer des fichiers",
+        canManageSettings: "Modifier les réglages de l'application",
+        canHavePrivateFolder: "Peut avoir un dossier privé",
+        canBrowseWholeLibrary: "Voir toute la bibliothèque",
+        isAdmin: "Administrateur",
+      },
+    },
+
+    privacy: {
+      title: "Dossier privé",
+      description:
+        "Masque ton dossier aux autres membres dans cette interface. C'est de la discrétion, pas du secret : qui administre le serveur atteint toujours les fichiers sur le disque.",
+      unavailable: "Un administrateur n'a pas accordé cette permission.",
+    },
+
+    security: {
+      title: "Second facteur",
+      description:
+        "Demander un code à six chiffres d'une application d'authentification à la connexion.",
+      enabled: "Activé",
+      start: "Configurer",
+      secretHint:
+        "Ajoute ce secret à ton application d'authentification, puis saisis le code affiché pour confirmer.",
+      confirm: "Confirmer",
+      disable: "Désactiver",
+      disableHint: "Saisis ton mot de passe pour désactiver.",
+      turnedOn: "Second facteur activé",
+      turnedOff: "Second facteur désactivé",
+    },
+
+    audit: {
+      title: "Activité",
+      description: "Connexions et modifications apportées à cette instance.",
+      empty: "Rien d'enregistré pour l'instant.",
+      actions: {
+        "login.success": "Connexion",
+        "login.failed": "Échec de connexion",
+        "login.locked": "Compte verrouillé",
+        logout: "Déconnexion",
+        "user.created": "Membre ajouté",
+        "user.updated": "Membre modifié",
+        "user.deleted": "Membre retiré",
+        "group.created": "Groupe créé",
+        "group.updated": "Groupe modifié",
+        "group.deleted": "Groupe supprimé",
+        "invite.created": "Invitation créée",
+        "invite.revoked": "Invitation révoquée",
+        "privacy.revoked": "Dossier privé révoqué",
+        "totp.enabled": "Second facteur activé",
+        "totp.disabled": "Second facteur désactivé",
+        "password.changed": "Mot de passe modifié",
+      },
     },
 
     language: {
@@ -270,6 +383,27 @@ export const fr: Dictionary = {
   },
 
   apiErrors: {
+    accountLockedUntil: (when: string) =>
+      `Trop de tentatives échouées. Ce compte est verrouillé jusqu'à ${when}.`,
+    account_suspended:
+      "Ce compte a été suspendu par un administrateur.",
+    csrf_failed:
+      "Cette requête n'a pas pu être vérifiée. Recharge la page et réessaie.",
+    account_locked:
+      "Trop de tentatives échouées. Ce compte est verrouillé quelques minutes.",
+    totp_required: "Saisis le code de ton application d'authentification.",
+    totp_invalid: "Ce code d'authentification n'est pas le bon.",
+    unauthenticated: "Connecte-toi pour continuer.",
+    forbidden: "Tu n'as pas la permission de faire ça.",
+    invalid_credentials: "Identifiant ou mot de passe incorrect.",
+    weak_password: "Ce mot de passe est trop court.",
+    too_many_attempts: "Trop de tentatives. Réessaie dans quelques minutes.",
+    already_setup: "Cette instance est déjà configurée.",
+    last_admin: "C'est le seul administrateur.",
+    self_delete: "Tu ne peux pas supprimer ton propre compte.",
+    group_in_use:
+      "Les groupes intégrés, et ceux qui ont des membres, ne peuvent pas être supprimés.",
+    invalid_name: "Un nom est requis.",
     downloads_active:
       "Des téléchargements sont en cours — réessaie une fois terminés.",
     concurrency_out_of_range: "Cette valeur est hors de la plage autorisée.",

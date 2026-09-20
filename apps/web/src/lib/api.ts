@@ -19,6 +19,16 @@ function withSlash(path: string): string {
   return path.startsWith("/") ? path : `/${path}`;
 }
 
+/** The CSRF token the server handed us, readable because it is not HttpOnly. */
+function csrfToken(): string | null {
+  if (typeof document === "undefined") return null;
+  for (const part of document.cookie.split(";")) {
+    const [name, ...rest] = part.trim().split("=");
+    if (name === "siphon.csrf") return decodeURIComponent(rest.join("="));
+  }
+  return null;
+}
+
 export function apiUrl(path: string): string {
   return `${API_BASE_URL}${withSlash(path)}`;
 }
@@ -50,12 +60,20 @@ export function downloadUrl(path: string): string {
 export class ApiError extends Error {
   readonly code?: ApiErrorCode;
   readonly status: number;
+  /** For a locked account: when it opens again, so the UI can say so. */
+  readonly lockedUntil?: string;
 
-  constructor(message: string, status: number, code?: ApiErrorCode) {
+  constructor(
+    message: string,
+    status: number,
+    code?: ApiErrorCode,
+    lockedUntil?: string,
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
+    this.lockedUntil = lockedUntil;
   }
 }
 
@@ -63,14 +81,17 @@ async function toApiError(res: Response): Promise<ApiError> {
   const body = await res.text().catch(() => "");
   let message = "";
   let code: ApiErrorCode | undefined;
+  let lockedUntil: string | undefined;
   try {
     const parsed = JSON.parse(body) as {
       error?: string;
       message?: string;
       code?: ApiErrorCode;
+      lockedUntil?: string;
     };
     message = parsed.error ?? parsed.message ?? "";
     code = parsed.code;
+    lockedUntil = parsed.lockedUntil;
   } catch {
     // Not JSON — fall through to the generic message below.
   }
@@ -79,7 +100,7 @@ async function toApiError(res: Response): Promise<ApiError> {
     else if (res.status >= 500) message = "The server hit an error";
     else message = body.trim() || `Error ${res.status}`;
   }
-  return new ApiError(message, res.status, code);
+  return new ApiError(message, res.status, code, lockedUntil);
 }
 
 export async function apiFetch<T>(
@@ -90,9 +111,20 @@ export async function apiFetch<T>(
   // POST with `Content-Type: application/json` and an empty body (400).
   const headers: HeadersInit = {
     ...(init?.body != null ? { "Content-Type": "application/json" } : {}),
+    // Double-submit: the server compares this with the cookie it set. A
+    // cross-site request can make the browser send the cookie, but it cannot
+    // read it, so it cannot produce this header.
+    ...(csrfToken() ? { "x-csrf-token": csrfToken()! } : {}),
     ...init?.headers,
   };
-  const res = await fetch(apiUrl(path), { ...init, headers });
+  // The session cookie has to ride along. Same-origin would send it anyway,
+  // but in development the API answers on another port, and a cross-origin
+  // fetch drops cookies unless asked.
+  const res = await fetch(apiUrl(path), {
+    ...init,
+    headers,
+    credentials: "include",
+  });
   if (!res.ok) {
     throw await toApiError(res);
   }

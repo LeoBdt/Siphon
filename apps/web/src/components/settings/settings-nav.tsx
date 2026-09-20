@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "motion/react";
 import { useI18n } from "@/components/i18n-provider";
+import { useAuthState } from "@/lib/hooks";
 import { EASE_OUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
@@ -20,16 +21,23 @@ const SECTIONS = [
   { key: "engine", href: "/settings/engine" },
 ] as const;
 
+/** Shown to administrators only; the route itself is guarded server-side. */
+const ADMIN_SECTION = { key: "accounts", href: "/settings/accounts" } as const;
+
 export function SettingsNav() {
   const pathname = usePathname();
   const { t } = useI18n();
+  const { data: auth } = useAuthState();
+  const sections = auth?.user?.effective.isAdmin
+    ? [...SECTIONS, ADMIN_SECTION]
+    : SECTIONS;
 
   return (
     // Scrolls sideways rather than wrapping once more sections land; the
     // negative margin lets the scroll area bleed to the page gutter.
     <nav className="-mx-1 overflow-x-auto px-1 pb-1">
       <div className="inline-flex gap-1 rounded-xl border bg-muted/40 p-1">
-        {SECTIONS.map((s) => {
+        {sections.map((s) => {
           const active = pathname.startsWith(s.href);
           return (
             <Link
