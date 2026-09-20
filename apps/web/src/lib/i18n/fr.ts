@@ -192,6 +192,13 @@ export const fr: Dictionary = {
       action: "Vérifier les mises à jour",
       checked: "yt-dlp vérifié",
       failed: "Mise à jour de yt-dlp échouée",
+      lastChecked: (when: string) => `Dernier contrôle ${when}`,
+      neverChecked: "Jamais vérifié",
+      auto: "Vérifier automatiquement",
+      autoHint:
+        "Au démarrage, puis une fois par jour. La mise à jour s'applique aussitôt.",
+      on: "Activé",
+      off: "Désactivé",
     },
 
     language: {

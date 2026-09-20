@@ -16,34 +16,53 @@ import {
   setMaxConcurrent,
 } from "../downloads-manager.js";
 import { cleanStalePartials } from "../lib/cleanup.js";
+import {
+  isAutoUpdateEnabled,
+  lastCheckedAt,
+  recordCheck,
+  setAutoUpdateEnabled,
+} from "../lib/ytdlp-autoupdate.js";
 import { ytdlpUpdate, ytdlpVersion } from "../lib/ytdlp-system.js";
 
 export async function systemRoutes(app: FastifyInstance) {
   // Current settings.
   app.get("/api/settings", async (): Promise<AppSettings> => ({
     maxConcurrentDownloads: getMaxConcurrent(),
+    autoUpdateYtdlp: isAutoUpdateEnabled(),
   }));
 
-  // Update settings (currently just the download concurrency).
+  // Update settings. Every field is optional: the page sends only what the
+  // user touched, so a card never overwrites a setting it does not own.
   app.put("/api/settings", async (req, reply) => {
-    const body = req.body as Partial<AppSettings>;
-    const n = body?.maxConcurrentDownloads;
-    if (typeof n !== "number" || !Number.isFinite(n)) {
-      return reply.code(400).send({
-        code: "concurrency_out_of_range",
-        error: "maxConcurrentDownloads must be a number",
-      } satisfies ApiErrorBody);
+    const body = (req.body ?? {}) as Partial<AppSettings>;
+
+    if (body.maxConcurrentDownloads !== undefined) {
+      const n = body.maxConcurrentDownloads;
+      if (typeof n !== "number" || !Number.isFinite(n)) {
+        return reply.code(400).send({
+          code: "concurrency_out_of_range",
+          error: "maxConcurrentDownloads must be a number",
+        } satisfies ApiErrorBody);
+      }
+      // Rejected rather than silently clamped, so the client never shows a
+      // value the server did not accept.
+      if (n < CONCURRENCY_MIN || n > CONCURRENCY_MAX) {
+        return reply.code(400).send({
+          code: "concurrency_out_of_range",
+          error: `maxConcurrentDownloads must be between ${CONCURRENCY_MIN} and ${CONCURRENCY_MAX}`,
+        } satisfies ApiErrorBody);
+      }
+      setMaxConcurrent(n);
     }
-    // Reject out-of-range values instead of silently clamping them, so the
-    // client never shows a value the server did not accept.
-    if (n < CONCURRENCY_MIN || n > CONCURRENCY_MAX) {
-      return reply.code(400).send({
-        code: "concurrency_out_of_range",
-        error: `maxConcurrentDownloads must be between ${CONCURRENCY_MIN} and ${CONCURRENCY_MAX}`,
-      } satisfies ApiErrorBody);
+
+    if (body.autoUpdateYtdlp !== undefined) {
+      setAutoUpdateEnabled(Boolean(body.autoUpdateYtdlp));
     }
-    const maxConcurrentDownloads = setMaxConcurrent(n);
-    return { maxConcurrentDownloads } satisfies AppSettings;
+
+    return {
+      maxConcurrentDownloads: getMaxConcurrent(),
+      autoUpdateYtdlp: isAutoUpdateEnabled(),
+    } satisfies AppSettings;
   });
 
   // Sweep leftover yt-dlp temp files (partials, un-merged DASH streams).
@@ -77,11 +96,13 @@ export async function systemRoutes(app: FastifyInstance) {
   // Installed yt-dlp version.
   app.get("/api/system/ytdlp", async (): Promise<YtdlpInfo> => ({
     version: await ytdlpVersion(),
+    lastCheckedAt: lastCheckedAt(),
   }));
 
   // Trigger a yt-dlp self-update (yt-dlp -U).
   app.post("/api/system/ytdlp/update", async (): Promise<YtdlpUpdateResult> => {
     const { ok, output } = await ytdlpUpdate();
+    recordCheck();
     const version = await ytdlpVersion();
     return {
       ok,

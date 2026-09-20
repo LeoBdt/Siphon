@@ -143,7 +143,9 @@ export function useSettings() {
 export function useUpdateSettings() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: AppSettings) =>
+    // Partial on purpose: each card sends only the field it owns, so saving one
+    // setting never overwrites another card's value with a stale copy.
+    mutationFn: (body: Partial<AppSettings>) =>
       apiFetch<AppSettings>("/api/settings", {
         method: "PUT",
         body: JSON.stringify(body),

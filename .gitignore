@@ -13,9 +13,12 @@ out/
 .env.local
 .env.*.local
 
-# Data (SQLite db + downloaded media)
-data/
-downloads/
+# Data (SQLite db + downloaded media).
+# Anchored to the repository root: without the leading slash these match any
+# directory of that name at any depth, which silently swallowed the Next.js
+# route at apps/web/src/app/settings/downloads/.
+/data/
+/downloads/
 *.sqlite
 *.sqlite-journal
 *.db

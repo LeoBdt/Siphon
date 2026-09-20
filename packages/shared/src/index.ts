@@ -197,6 +197,12 @@ export const CONCURRENCY_MAX = 8;
 export interface AppSettings {
   /** How many downloads run concurrently (CONCURRENCY_MIN..CONCURRENCY_MAX). */
   maxConcurrentDownloads: number;
+  /**
+   * Check for a newer yt-dlp on boot and once a day. On by default: the
+   * overwhelming majority of download failures come from a yt-dlp that is too
+   * old, not from one that is too new.
+   */
+  autoUpdateYtdlp: boolean;
 }
 
 /**
@@ -228,9 +234,11 @@ export interface DiskUsage {
   usedBytes: number;
 }
 
-/** yt-dlp version info and whether an update check/run is available. */
+/** yt-dlp version info and the outcome of the last update check. */
 export interface YtdlpInfo {
   version: string | null;
+  /** ISO date of the last check, automatic or manual. Null if never checked. */
+  lastCheckedAt: string | null;
 }
 
 /** Result of triggering a yt-dlp self-update. */

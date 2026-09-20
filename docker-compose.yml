@@ -47,12 +47,16 @@ services:
       - "3000"
 
   proxy:
-    image: caddy:2-alpine
+    # Carries its own routing config, so this compose file needs nothing else
+    # from the repository — downloading it on its own is enough to deploy.
+    image: ghcr.io/leobdt/siphon-proxy:latest
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
     restart: unless-stopped
     ports:
       - "${SIPHON_BIND:-0.0.0.0}:${SIPHON_PORT:-8080}:80"
     volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
     depends_on:

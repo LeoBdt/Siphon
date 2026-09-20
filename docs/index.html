@@ -441,7 +441,7 @@
         </p>
 
         <div class="cta">
-          <a class="btn btn-primary" href="#install">Install in one command</a>
+          <a class="btn btn-primary" href="#install">Install in two commands</a>
           <a class="btn btn-ghost" href="https://github.com/LeoBdt/Siphon">
             View source
           </a>
@@ -528,11 +528,14 @@
             <button class="copy" type="button" data-copy>Copy</button>
           </div>
           <pre id="install-cmd"><span class="p">$</span> curl -O https://raw.githubusercontent.com/LeoBdt/Siphon/main/docker-compose.yml
+<span class="c"># optional: echo "SIPHON_PORT=9000" &gt; .env</span>
 <span class="p">$</span> docker compose up -d</pre>
         </div>
 
         <p class="after-terminal">
-          Siphon is then on <code>http://localhost:8080</code>. Set
+          Siphon is then on <code>http://localhost:8080</code>. The compose file
+          is self-contained — all three images carry what they need, so there is
+          nothing else to fetch and nothing to build. Set
           <code>SIPHON_PORT</code> in a <code>.env</code> file beside the compose
           file to move it, and <code>DATA_DIR</code> to put the library on a
           bigger disk.

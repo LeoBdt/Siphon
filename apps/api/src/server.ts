@@ -10,6 +10,7 @@ import { downloadsRoutes } from "./routes/downloads.js";
 import { filesRoutes } from "./routes/files.js";
 import { systemRoutes } from "./routes/system.js";
 import { wsRoutes } from "./routes/ws.js";
+import { startYtdlpAutoUpdate } from "./lib/ytdlp-autoupdate.js";
 
 async function buildServer() {
   const app = Fastify({
@@ -76,6 +77,7 @@ async function main() {
   const resumed = resumeInterruptedJobs();
 
   const app = await buildServer();
+  startYtdlpAutoUpdate((msg) => app.log.info(msg));
   if (resumed > 0) app.log.info(`Resumed ${resumed} interrupted download(s)`);
   // Sweep both the library (leftovers from before scratch space existed) and
   // the scratch dir itself.

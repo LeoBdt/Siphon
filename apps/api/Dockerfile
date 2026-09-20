@@ -12,6 +12,11 @@ RUN apt-get update \
   && curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux \
        -o /usr/local/bin/yt-dlp \
   && chmod a+rx /usr/local/bin/yt-dlp \
+  # yt-dlp belongs to the runtime user so it can update itself: `yt-dlp -U`
+  # rewrites this very binary, which root ownership made impossible. Done in
+  # the same layer as the download — a chown in a later layer would store the
+  # whole 40 MB file a second time.
+  && chown node:node /usr/local/bin/yt-dlp \
   && rm -rf /var/lib/apt/lists/*
 
 RUN corepack enable
@@ -37,7 +42,11 @@ ENV NODE_ENV=production \
 
 # The `node` user ships with the base image at uid/gid 1000. The bind-mounted
 # data directory on the host must be owned by that uid — see docker-compose.yml.
-RUN mkdir -p /data && chown -R node:node /data /app
+#
+# Only /data is chowned. Recursing over /app as well rewrote every installed
+# file, and since a changed file is stored again in full, that duplicated ~20 MB
+# of node_modules into this layer for nothing: the app only ever reads /app.
+RUN mkdir -p /data && chown node:node /data
 USER node
 
 EXPOSE 3001
@@ -46,4 +55,8 @@ EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:3001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-CMD ["pnpm", "--filter", "@app/api", "exec", "tsx", "src/server.ts"]
+# Call the installed binary directly rather than going through pnpm. Corepack
+# only installs a shim at build time and fetches pnpm itself on first use, so
+# running it here downloaded a tarball from npm on every container start — slow,
+# and it made booting depend on the registry being reachable.
+CMD ["apps/api/node_modules/.bin/tsx", "apps/api/src/server.ts"]

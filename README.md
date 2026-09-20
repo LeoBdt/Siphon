@@ -124,9 +124,13 @@ than a multi-minute compile on the target machine:
 ```bash
 mkdir -p /opt/siphon && cd /opt/siphon
 curl -O https://raw.githubusercontent.com/LeoBdt/Siphon/main/docker-compose.yml
-mkdir -p data && sudo chown -R 1000:1000 data
+mkdir -p data && sudo chown -R 1000:1000 data   # Linux only; skip on macOS
 docker compose up -d
 ```
+
+The compose file is self-contained: all three images carry what they need, so
+there is nothing else to download and nothing to build. Do **not** pass
+`--build` here — without the source tree there is nothing to build from.
 
 To build from source instead — for development, or to run an unreleased
 change — clone the repository and add `--build`:

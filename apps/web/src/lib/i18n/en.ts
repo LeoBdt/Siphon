@@ -192,6 +192,12 @@ export const en = {
       action: "Check for updates",
       checked: "yt-dlp checked",
       failed: "yt-dlp update failed",
+      lastChecked: (when: string) => `Last checked ${when}`,
+      neverChecked: "Never checked",
+      auto: "Check automatically",
+      autoHint: "On start, then once a day. Updates apply immediately.",
+      on: "On",
+      off: "Off",
     },
 
     language: {

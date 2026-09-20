@@ -1,20 +1,41 @@
 name: Publish images
 
-# Builds both images and pushes them to GitHub's registry, so deploying is a
-# pull instead of a multi-minute compile on the target machine — which matters
+# Builds the three images and pushes them to GitHub's registry, so deploying is
+# a pull instead of a multi-minute compile on the target machine — which matters
 # on a small server, where building is slow and memory-hungry.
 
 on:
   push:
     branches: [main]
     tags: ["v*"]
+  # Rebuilt nightly even without a commit: the images would otherwise keep
+  # whatever base, ffmpeg and yt-dlp were current the day they were built, and
+  # yt-dlp in particular stops working when a platform changes something.
+  schedule:
+    - cron: "17 4 * * *"
   workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
 
 jobs:
+  # Publishing is automatic, so it must not be blind: a nightly rebuild picking
+  # up a broken upstream change would otherwise ship it straight to everyone.
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+
   publish:
+    needs: verify
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -28,6 +49,8 @@ jobs:
             dockerfile: apps/api/Dockerfile
           - name: web
             dockerfile: apps/web/Dockerfile
+          - name: proxy
+            dockerfile: deploy/Dockerfile
 
     steps:
       - uses: actions/checkout@v4
