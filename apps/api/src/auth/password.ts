@@ -13,7 +13,7 @@ const scryptAsync = promisify(scrypt) as (
   password: string,
   salt: Buffer,
   keylen: number,
-  options: { N: number; r: number; p: number },
+  options: { N: number; r: number; p: number; maxmem: number },
 ) => Promise<Buffer>;
 
 // Cost parameters. N is the expensive knob; 2^15 keeps a single hash around
@@ -22,9 +22,24 @@ const scryptAsync = promisify(scrypt) as (
 const PARAMS = { N: 32768, r: 8, p: 1 };
 const KEY_LENGTH = 64;
 
+/**
+ * scrypt needs 128 × N × r bytes, and Node refuses anything above `maxmem`,
+ * which defaults to 32 MiB — exactly what these parameters ask for, so the
+ * default rejects them. The ceiling is a guard against absurd parameters, not
+ * a tuning knob: it has to be derived from the parameters actually in use, and
+ * from the *stored* ones when verifying, so a hash written under any cost
+ * still opens.
+ */
+function maxmemFor(N: number, r: number): number {
+  return 128 * N * r * 2;
+}
+
 export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16);
-  const key = await scryptAsync(password, salt, KEY_LENGTH, PARAMS);
+  const key = await scryptAsync(password, salt, KEY_LENGTH, {
+    ...PARAMS,
+    maxmem: maxmemFor(PARAMS.N, PARAMS.r),
+  });
   // Parameters travel with the hash so they can be raised later without
   // invalidating passwords already stored.
   return [
@@ -45,11 +60,14 @@ export async function verifyPassword(
   if (scheme !== "scrypt" || !salt || !key) return false;
 
   const expected = Buffer.from(key, "base64");
-  const actual = await scryptAsync(password, Buffer.from(salt, "base64"), expected.length, {
-    N: Number(n),
-    r: Number(r),
-    p: Number(p),
-  });
+  const params = { N: Number(n), r: Number(r), p: Number(p) };
+  if (!params.N || !params.r || !params.p) return false;
+  const actual = await scryptAsync(
+    password,
+    Buffer.from(salt, "base64"),
+    expected.length,
+    { ...params, maxmem: maxmemFor(params.N, params.r) },
+  );
   // Constant time: a plain === leaks how much of the hash matched through how
   // long the comparison took.
   return actual.length === expected.length && timingSafeEqual(actual, expected);
