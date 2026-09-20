@@ -7,11 +7,20 @@
 // Download / quality presets
 // ---------------------------------------------------------------------------
 
-/** Identifiers for the quality presets exposed in the UI. */
+/**
+ * Quality preset identifiers.
+ *
+ * `1080p60` is no longer offered: presets describe resolution, and singling out
+ * one resolution for frame rate was arbitrary — why 60 fps at 1080p but not in
+ * 4K? Frame rate is capped from the advanced panel instead, and left alone by
+ * default so yt-dlp takes the smoothest stream available. The id is kept so
+ * history rows recorded with it still replay exactly as they did.
+ */
 export type QualityPresetId =
   | "best"
   | "2160p"
   | "1440p"
+  /** @deprecated Legacy: recorded by older versions, no longer offered. */
   | "1080p60"
   | "1080p"
   | "720p"
@@ -37,7 +46,6 @@ export const QUALITY_PRESETS: QualityPreset[] = [
   { id: "best", kind: "video", maxHeight: null, maxFps: null },
   { id: "2160p", kind: "video", maxHeight: 2160, maxFps: null },
   { id: "1440p", kind: "video", maxHeight: 1440, maxFps: null },
-  { id: "1080p60", kind: "video", maxHeight: 1080, maxFps: 60 },
   { id: "1080p", kind: "video", maxHeight: 1080, maxFps: null },
   { id: "720p", kind: "video", maxHeight: 720, maxFps: null },
   { id: "480p", kind: "video", maxHeight: 480, maxFps: null },

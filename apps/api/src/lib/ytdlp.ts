@@ -58,8 +58,13 @@ export function presetToArgs(
     }
   }
 
-  const maxHeight = advanced?.maxHeight ?? meta?.maxHeight ?? null;
-  const maxFps = advanced?.maxFps ?? meta?.maxFps ?? null;
+  // Presets dropped from the UI still have to behave as recorded, or retrying
+  // an old job would quietly download something else than it did the first time.
+  const legacy =
+    preset === "1080p60" ? { maxHeight: 1080, maxFps: 60 } : undefined;
+
+  const maxHeight = advanced?.maxHeight ?? meta?.maxHeight ?? legacy?.maxHeight ?? null;
+  const maxFps = advanced?.maxFps ?? meta?.maxFps ?? legacy?.maxFps ?? null;
   return [
     "-f",
     videoFormatSelector(maxHeight, maxFps),
