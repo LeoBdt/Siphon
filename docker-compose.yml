@@ -1,7 +1,15 @@
-# Local/VPS deployment. The browser talks to the API directly, so set
-# NEXT_PUBLIC_API_URL to the URL the API is reachable at from the client.
-# On a VPS, put both services behind a reverse proxy (Caddy/Nginx) and set it
-# to e.g. https://dl.example.com (API) — see README "Déploiement".
+# Deployment for a single host.
+#
+# Only the proxy publishes a port. The browser talks to one origin, which is
+# why nothing about the host has to be known when the images are built.
+#
+# Settings worth knowing (all optional, put them in a .env file next to this):
+#   SIPHON_PORT  port published on the host            (default 8080)
+#   SIPHON_BIND  address to bind to, e.g. 127.0.0.1     (default 0.0.0.0)
+#   DATA_DIR     where downloads and the database live (default ./data)
+#
+# The containers run as uid 1000, so the data directory must be writable by it:
+#   mkdir -p data && sudo chown -R 1000:1000 data
 
 services:
   api:
@@ -9,27 +17,44 @@ services:
       context: .
       dockerfile: apps/api/Dockerfile
     restart: unless-stopped
-    ports:
-      - "3001:3001"
     environment:
-      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
       MAX_CONCURRENT_DOWNLOADS: ${MAX_CONCURRENT_DOWNLOADS:-2}
+      # WEB_ORIGIN is deliberately left at its restrictive default. Behind the
+      # proxy every request is same-origin, so no CORS check ever runs — a
+      # permissive value would buy nothing and widen the surface of an app that
+      # has no authentication yet. Set it only if you serve the web app from a
+      # different origin than the API.
     volumes:
-      # Downloads + SQLite DB live here, outside the container.
-      - media-data:/data
+      # Downloads, scratch space and the SQLite database, on the host so they
+      # survive the container and can be backed up like ordinary files.
+      - ${DATA_DIR:-./data}:/data
+    expose:
+      - "3001"
 
   web:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
-      args:
-        # Baked into the client bundle at build time.
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    expose:
+      - "3000"
+
+  proxy:
+    image: caddy:2-alpine
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "${SIPHON_BIND:-0.0.0.0}:${SIPHON_PORT:-8080}:80"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
     depends_on:
-      - api
+      web:
+        condition: service_healthy
 
 volumes:
-  media-data:
+  caddy-data:
+  caddy-config:

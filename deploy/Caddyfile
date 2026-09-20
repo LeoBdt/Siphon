@@ -1,0 +1,37 @@
+# Single entry point for the whole app.
+#
+# Both services sit behind this proxy on one origin, so the browser never needs
+# to know the API's address: no URL baked into the web image at build time, and
+# no CORS. Caddy upgrades WebSocket connections on its own, which is why /ws can
+# be routed here rather than exposed separately.
+
+:80 {
+	encode zstd gzip
+
+	# Long media streams and big ZIPs: do not cut them off.
+	handle /api/files/stream* {
+		reverse_proxy api:3001 {
+			flush_interval -1
+		}
+	}
+	handle /api/files/download* {
+		reverse_proxy api:3001 {
+			flush_interval -1
+		}
+	}
+
+	handle /api/* {
+		reverse_proxy api:3001
+	}
+	handle /ws {
+		reverse_proxy api:3001
+	}
+	handle /health {
+		reverse_proxy api:3001
+	}
+
+	# Everything else is the Next.js app.
+	handle {
+		reverse_proxy web:3000
+	}
+}

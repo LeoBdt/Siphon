@@ -109,18 +109,31 @@ the active language.
 
 ## Deployment
 
-The Docker images bundle Node, `ffmpeg` and `yt-dlp`. The library and the SQLite
-database live in a volume mounted at `/data`, outside the containers.
+The Docker images bundle Node, `ffmpeg` and `yt-dlp`. A Caddy proxy fronts both
+services, so the browser only ever talks to one origin — nothing about the host
+is baked into the images, and CORS never comes into play.
 
 ```bash
-NEXT_PUBLIC_API_URL=http://localhost:3001 \
-WEB_ORIGIN=http://localhost:3000 \
+mkdir -p data && sudo chown -R 1000:1000 data   # containers run as uid 1000
 docker compose up -d --build
 ```
 
-On a server, put both services behind a reverse proxy with TLS (Caddy, Nginx)
-and set `NEXT_PUBLIC_API_URL` and `WEB_ORIGIN` to the public domain.
-`NEXT_PUBLIC_API_URL` is baked in when the web image is built.
+The app is then on `http://<host>:8080`.
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `SIPHON_PORT` | Port published on the host | `8080` |
+| `SIPHON_BIND` | Address to bind to, e.g. `127.0.0.1` to keep it local | `0.0.0.0` |
+| `DATA_DIR` | Where downloads and the database live | `./data` |
+
+Put them in a `.env` file next to `docker-compose.yml`. Downloads, the scratch
+space and the SQLite database all land under `DATA_DIR`, on the host, so they
+outlive the containers and back up like ordinary files. Keep that directory on
+a single filesystem: the scratch space sits beside the library precisely so a
+finished download is moved with a rename rather than copied.
+
+For a public deployment, point your own TLS-terminating proxy at
+`SIPHON_PORT` — and read the next section first.
 
 ## Security
 

@@ -1,19 +1,35 @@
 import type { ApiErrorCode } from "@app/shared";
 
 /**
- * Small client for the Fastify API. The base URL is configurable so the same
- * build works locally and once deployed behind a reverse proxy on the VPS.
+ * Small client for the Fastify API.
+ *
+ * In production the default is an empty base: the deployment puts a reverse
+ * proxy in front of both services, so the browser only ever talks to one
+ * origin. That keeps the image portable — nothing about the host is baked in
+ * at build time — and removes CORS entirely.
+ *
+ * In development the two dev servers are on separate ports, so we point at the
+ * API directly. `NEXT_PUBLIC_API_URL` overrides either case.
  */
 export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+  process.env.NEXT_PUBLIC_API_URL ??
+  (process.env.NODE_ENV === "production" ? "" : "http://localhost:3001");
+
+function withSlash(path: string): string {
+  return path.startsWith("/") ? path : `/${path}`;
+}
 
 export function apiUrl(path: string): string {
-  return `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
+  return `${API_BASE_URL}${withSlash(path)}`;
 }
 
 export function wsUrl(path = "/ws"): string {
-  const base = API_BASE_URL.replace(/^http/, "ws");
-  return `${base}${path.startsWith("/") ? path : `/${path}`}`;
+  const p = withSlash(path);
+  if (API_BASE_URL) return `${API_BASE_URL.replace(/^http/, "ws")}${p}`;
+  // Same-origin deployment: derive the socket URL from the page itself, so it
+  // follows the scheme (wss behind TLS) and the port without being told.
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${proto}//${window.location.host}${p}`;
 }
 
 /** URL to stream a file (Range-enabled) for the in-app player. */
