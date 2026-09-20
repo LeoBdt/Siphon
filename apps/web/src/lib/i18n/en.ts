@@ -70,6 +70,13 @@ export const en = {
     destination: "Destination",
     root: "Root",
     submit: "Download",
+    retention: "Where it goes",
+    retentionLibrary: "Library",
+    retentionDirect: "Direct",
+    retentionLibraryHint: "Kept on the server, browsable in Files.",
+    retentionDirectHint:
+      "Sent to your browser, then removed from the server. Collect it within a day.",
+    save: "Save file",
     submitMany: (n: number) => `Download (${n})`,
     started: "Download started",
     startedMany: (n: number) => `${n} downloads started`,

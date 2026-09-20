@@ -1,4 +1,4 @@
-import { readdir, stat, unlink } from "node:fs/promises";
+import { readdir, rm, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import type { CleanupResult } from "@app/shared";
 
@@ -59,4 +59,41 @@ export function isTempArtifact(name: string): boolean {
     // failure) — leaving a silent video and a stray audio file in the library.
     /\.f\d+\.[a-z0-9]{2,5}$/i.test(name)
   );
+}
+
+/**
+ * Remove direct downloads nobody came to collect.
+ *
+ * A direct download exists only until its owner saves it; one that has sat in
+ * scratch space for a day was abandoned, and keeping it would quietly turn the
+ * "we do not keep a copy" promise into a lie.
+ */
+export async function cleanStaleDirect(
+  tmpDir: string,
+  maxAgeMs = 24 * 60 * 60 * 1000,
+): Promise<number> {
+  const root = join(tmpDir, "direct");
+  const cutoff = Date.now() - maxAgeMs;
+  let removed = 0;
+
+  let entries;
+  try {
+    entries = await readdir(root, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const full = join(root, entry.name);
+    try {
+      const s = await stat(full);
+      if (s.mtimeMs < cutoff) {
+        await rm(full, { recursive: true, force: true });
+        removed++;
+      }
+    } catch {
+      /* vanished or locked — leave it for the next sweep */
+    }
+  }
+  return removed;
 }

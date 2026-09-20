@@ -70,6 +70,13 @@ export const fr: Dictionary = {
     destination: "Destination",
     root: "Racine",
     submit: "Télécharger",
+    retention: "Destination",
+    retentionLibrary: "Bibliothèque",
+    retentionDirect: "Direct",
+    retentionLibraryHint: "Conservé sur le serveur, visible dans Fichiers.",
+    retentionDirectHint:
+      "Envoyé à ton navigateur, puis supprimé du serveur. À récupérer sous un jour.",
+    save: "Enregistrer le fichier",
     submitMany: (n: number) => `Télécharger (${n})`,
     started: "Téléchargement lancé",
     startedMany: (n: number) => `${n} téléchargements lancés`,

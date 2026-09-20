@@ -54,6 +54,8 @@ for (const col of [
   "maxHeight INTEGER",
   "maxFps INTEGER",
   "errorCode TEXT",
+  "retention TEXT NOT NULL DEFAULT 'library'",
+  "userId TEXT",
 ]) {
   try {
     db.exec(`ALTER TABLE downloads ADD COLUMN ${col}`);
@@ -78,6 +80,8 @@ type Row = {
   progress: number;
   outputFile: string | null;
   fileSizeBytes: number | null;
+  retention: string;
+  userId: string | null;
   errorCode: string | null;
   errorMessage: string | null;
   speedBytesPerSec: number | null;
@@ -113,6 +117,8 @@ function rowToJob(r: Row): DownloadJob {
     isPlaylistParent: r.isPlaylistParent === 1,
     childCount: r.childCount,
     phase: (r.phase as DownloadJob["phase"]) ?? null,
+    retention: (r.retention as DownloadJob["retention"]) ?? "library",
+    userId: r.userId ?? null,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
   };
@@ -132,15 +138,19 @@ export interface NewJob {
   childCount?: number | null;
   maxHeight?: number | null;
   maxFps?: number | null;
+  retention?: string;
+  userId?: string | null;
 }
 
 const insertStmt = db.prepare(`
   INSERT INTO downloads (
     id, url, title, thumbnailUrl, durationSeconds, preset, destPath, status,
-    progress, playlistId, isPlaylistParent, childCount, maxHeight, maxFps, createdAt, updatedAt
+    progress, playlistId, isPlaylistParent, childCount, maxHeight, maxFps,
+    retention, userId, createdAt, updatedAt
   ) VALUES (
     $id, $url, $title, $thumbnailUrl, $durationSeconds, $preset, $destPath, $status,
-    0, $playlistId, $isPlaylistParent, $childCount, $maxHeight, $maxFps, $now, $now
+    0, $playlistId, $isPlaylistParent, $childCount, $maxHeight, $maxFps,
+    $retention, $userId, $now, $now
   )
 `);
 
@@ -160,6 +170,8 @@ export function insertJob(job: NewJob): DownloadJob {
     childCount: job.childCount ?? null,
     maxHeight: job.maxHeight ?? null,
     maxFps: job.maxFps ?? null,
+    retention: job.retention ?? "library",
+    userId: job.userId ?? null,
     now,
   });
   return getJob(job.id)!;

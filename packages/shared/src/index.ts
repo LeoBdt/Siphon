@@ -105,6 +105,10 @@ export interface DownloadJob {
   childCount: number | null;
   /** Fine-grained phase during downloading/processing (drives the stepper). */
   phase: DownloadPhase | null;
+  /** Where the finished file goes. */
+  retention: RetentionMode;
+  /** Who started it. Null for jobs recorded before accounts existed. */
+  userId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -141,6 +145,9 @@ export interface CreateDownloadRequest {
   advanced?: AdvancedFormat | null;
   /** For playlists: only download these entry URLs (empty/absent = all). */
   playlistItems?: string[] | null;
+  /** Defaults to "library"; "direct" needs the canKeepInLibrary permission off
+   *  or on — either way the file is removed once fetched. */
+  retention?: RetentionMode;
 }
 
 /** A single entry of a playlist/channel, for the selection UI. */
@@ -437,7 +444,13 @@ export interface LockedOut {
   lockedUntil: string;
 }
 
-/** Where a finished download is kept. */
+/**
+ * Where a finished download ends up.
+ *
+ * `library` keeps it on the server, browsable in Files. `direct` writes it to
+ * scratch space, hands it to the browser, and deletes it — for the times you
+ * want the file, not a copy on someone else's disk.
+ */
 export type RetentionMode = "library" | "direct";
 
 /**

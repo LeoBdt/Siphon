@@ -3,7 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Download, Folder, Link2, ListVideo } from "lucide-react";
-import type { AdvancedFormat, QualityPresetId } from "@app/shared";
+import type {
+  AdvancedFormat,
+  QualityPresetId,
+  RetentionMode,
+} from "@app/shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -21,7 +25,13 @@ import { QualitySelector } from "@/components/quality-selector";
 import { PlaylistPicker } from "@/components/playlist-picker";
 import { DotProgress } from "@/components/ui/dot-progress";
 import { useQueryClient } from "@tanstack/react-query";
-import { useCreateDownload, useDownloads, useProbe } from "@/lib/hooks";
+import {
+  useAuthState,
+  useCreateDownload,
+  useDownloads,
+  useProbe,
+} from "@/lib/hooks";
+import { Segmented } from "@/components/ui/segmented";
 import { formatDuration } from "@/lib/format";
 import { DUR, EASE_OUT } from "@/lib/motion";
 import { PAGE_COLUMN, cn } from "@/lib/utils";
@@ -59,6 +69,11 @@ export default function DownloadPage() {
   const [preset, setPresetState] = useState<QualityPresetId>(saved.preset);
   const [advanced, setAdvanced] = useState<AdvancedFormat | null>(null);
   const [dest, setDestState] = useState(saved.dest);
+  // Someone who may not keep files has no choice to make: the server puts them
+  // on the direct path regardless, so offering the switch would only mislead.
+  const { data: auth } = useAuthState();
+  const canKeep = auth?.user?.effective.canKeepInLibrary ?? true;
+  const [retention, setRetention] = useState<RetentionMode>("library");
 
   function keep(patch: Partial<Draft>) {
     qc.setQueryData<Draft>(DRAFT_KEY, (prev) => ({
@@ -169,6 +184,7 @@ export default function DownloadPage() {
         destPath: dest,
         advanced,
         playlistItems: isPlaylist ? [...selected] : null,
+        retention,
       });
       toast.success(
         isPlaylist ? t.download.startedMany(selected.size) : t.download.started,
@@ -305,7 +321,30 @@ export default function DownloadPage() {
             />
           </div>
 
-          {/* Destination */}
+          {/* Retention — only worth showing to someone allowed to keep files. */}
+          {canKeep && (
+            <div className="flex flex-col gap-2">
+              <span className="text-sm font-medium">{t.download.retention}</span>
+              <Segmented<RetentionMode>
+                id="retention"
+                ariaLabel={t.download.retention}
+                value={retention}
+                onChange={setRetention}
+                options={[
+                  { value: "library", label: t.download.retentionLibrary },
+                  { value: "direct", label: t.download.retentionDirect },
+                ]}
+              />
+              <p className="text-xs text-muted-foreground">
+                {retention === "library"
+                  ? t.download.retentionLibraryHint
+                  : t.download.retentionDirectHint}
+              </p>
+            </div>
+          )}
+
+          {/* Destination — meaningless for a file that is never kept. */}
+          {retention === "library" && (
           <div className="flex flex-col gap-2">
             <span className="text-sm font-medium">{t.download.destination}</span>
             <Button
@@ -317,6 +356,7 @@ export default function DownloadPage() {
               {dest ? dest : t.download.root}
             </Button>
           </div>
+          )}
 
           <Button
             size="lg"

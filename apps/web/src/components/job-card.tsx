@@ -5,6 +5,7 @@ import {
   Ban,
   CheckCircle2,
   Clock,
+  Download,
   Loader2,
   ListVideo,
   RotateCw,
@@ -22,6 +23,7 @@ import {
   formatSpeed,
 } from "@/lib/format";
 import { useDeleteJob, useJobAction } from "@/lib/hooks";
+import { apiUrl } from "@/lib/api";
 import { useI18n } from "@/components/i18n-provider";
 import type { Dictionary } from "@/lib/i18n";
 import { EASE_OUT, DUR } from "@/lib/motion";
@@ -241,6 +243,29 @@ export function JobCard({ job }: { job: DownloadJob }) {
                 {t.job.eta} {formatEta(job.etaSeconds)}
               </span>
             ) : null}
+          </div>
+        )}
+
+        {job.status === "completed" && job.retention === "direct" && (
+          // The server is holding this only until it is collected, so the
+          // action belongs right here rather than in the file manager — which
+          // will never show it.
+          <div className="mt-1">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                const a = document.createElement("a");
+                a.href = apiUrl(`/api/downloads/${job.id}/file`);
+                a.rel = "noopener";
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+              }}
+            >
+              <Download className="size-4" />
+              {t.download.save}
+            </Button>
           </div>
         )}
 

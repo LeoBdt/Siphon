@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { join } from "node:path";
 import { statSync } from "node:fs";
 import PQueue from "p-queue";
 import type {
@@ -67,7 +68,13 @@ function runJob(jobId: string): Promise<void> {
   const job = getJob(jobId);
   if (!job || job.status === "canceled") return Promise.resolve();
 
-  const destDir = resolveInsideRoot(job.destPath);
+  // Direct downloads land in scratch space under the job id: they are never
+  // part of the library, and the folder is removed once the file is fetched
+  // or the window expires.
+  const destDir =
+    job.retention === "direct"
+      ? join(config.tmpDir, "direct", job.id)
+      : resolveInsideRoot(job.destPath);
   const fmt = getJobFormat(jobId);
   emit(
     updateJob(jobId, {
@@ -225,9 +232,13 @@ function recomputeParent(parentId: string) {
 
 export async function createDownload(
   req: CreateDownloadRequest,
+  /** Who is asking. Null only for jobs created before accounts existed. */
+  userId: string | null = null,
 ): Promise<DownloadJob> {
-  // Validate destination sits inside the sandbox before doing any work.
-  resolveInsideRoot(req.destPath);
+  const retention = req.retention ?? "library";
+  // A direct download never lands in the library, so the destination is only
+  // validated — and only meaningful — when it is being kept.
+  if (retention === "library") resolveInsideRoot(req.destPath);
 
   const maxHeight = req.advanced?.maxHeight ?? null;
   const maxFps = req.advanced?.maxFps ?? null;
@@ -257,6 +268,8 @@ export async function createDownload(
       childCount: entries.length,
       maxHeight,
       maxFps,
+      retention,
+      userId,
     });
     emit(parent);
 
@@ -274,6 +287,8 @@ export async function createDownload(
         playlistId: parentId,
         maxHeight,
         maxFps,
+        retention,
+        userId,
       });
       enqueue(childId);
     }
@@ -293,6 +308,8 @@ export async function createDownload(
     status: "queued",
     maxHeight,
     maxFps,
+    retention,
+    userId,
   });
   emit(job);
   enqueue(id);

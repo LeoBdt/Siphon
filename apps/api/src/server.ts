@@ -5,7 +5,7 @@ import websocket from "@fastify/websocket";
 import { config } from "./config.js";
 import { reconcileOnBoot } from "./db.js";
 import { resumeInterruptedJobs } from "./downloads-manager.js";
-import { cleanStalePartials } from "./lib/cleanup.js";
+import { cleanStaleDirect, cleanStalePartials } from "./lib/cleanup.js";
 import { downloadsRoutes } from "./routes/downloads.js";
 import { filesRoutes } from "./routes/files.js";
 import { systemRoutes } from "./routes/system.js";
@@ -107,6 +107,11 @@ async function main() {
       const removed = results.reduce((n, r) => n + r.removed, 0);
       if (removed > 0) app.log.info(`Cleaned up ${removed} temporary file(s)`);
     })
+    .catch(() => {});
+  void cleanStaleDirect(config.tmpDir)
+    .then(
+      (n) => n > 0 && app.log.info(`Discarded ${n} uncollected download(s)`),
+    )
     .catch(() => {});
   try {
     await app.listen({ port: config.port, host: "0.0.0.0" });
