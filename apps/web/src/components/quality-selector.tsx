@@ -163,7 +163,11 @@ export function QualitySelector({
                       onValueChange={setRes}
                     >
                       <SelectTrigger className="h-8 w-full">
-                        <SelectValue />
+                        {/* Spelled out: left to itself the control shows the
+                            raw value, so "auto" leaked through untranslated. */}
+                        <SelectValue>
+                          {(v: string) => RESOLUTION_LABELS[v] ?? t.quality.autoMax}
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         {RESOLUTIONS.map((r) => (
@@ -181,7 +185,9 @@ export function QualitySelector({
                       onValueChange={setFps}
                     >
                       <SelectTrigger className="h-8 w-full">
-                        <SelectValue />
+                        <SelectValue>
+                          {(v: string) => FPS_LABELS[v] ?? t.quality.auto}
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         {FPS.map((f) => (

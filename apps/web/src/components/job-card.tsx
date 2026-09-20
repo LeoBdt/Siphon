@@ -10,6 +10,7 @@ import {
   ListVideo,
   RotateCw,
   Trash2,
+  User as UserIcon,
   XCircle,
 } from "lucide-react";
 import type { DownloadJob, DownloadStatus } from "@app/shared";
@@ -112,7 +113,18 @@ function Stepper({ job, t }: { job: DownloadJob; t: Dictionary }) {
   );
 }
 
-export function JobCard({ job }: { job: DownloadJob }) {
+export function JobCard({
+  job,
+  /**
+   * Whose download this is. Passed only when the list holds more than one
+   * person's jobs, so an ordinary member never sees a badge naming themselves
+   * on every row.
+   */
+  authorName,
+}: {
+  job: DownloadJob;
+  authorName?: string | null;
+}) {
   const { t, intl } = useI18n();
   const action = useJobAction();
   const del = useDeleteJob();
@@ -197,6 +209,12 @@ export function JobCard({ job }: { job: DownloadJob }) {
             <Badge variant="secondary" className="gap-1 text-[10px]">
               <ListVideo className="size-3" />
               {t.job.videos(job.childCount ?? 0)}
+            </Badge>
+          )}
+          {authorName && (
+            <Badge variant="outline" className="gap-1 text-[10px] font-normal">
+              <UserIcon className="size-3" />
+              {authorName}
             </Badge>
           )}
           <span className="uppercase">{job.preset}</span>

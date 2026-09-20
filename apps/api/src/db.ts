@@ -233,6 +233,12 @@ export interface ListFilter {
   search?: string;
   limit?: number;
   offset?: number;
+  /**
+   * Whose jobs to return. `undefined` means everyone's, which only an
+   * administrator is ever allowed to ask for — the route decides, not this
+   * function. A plain member always arrives here with their own id.
+   */
+  userId?: string;
 }
 
 export function listJobs(filter: ListFilter = {}): DownloadJob[] {
@@ -241,6 +247,10 @@ export function listJobs(filter: ListFilter = {}): DownloadJob[] {
     "playlistId IS NULL",
   ];
   const params: SqlParams = {};
+  if (filter.userId) {
+    clauses.push("userId = $userId");
+    params.userId = filter.userId;
+  }
   if (filter.status) {
     clauses.push("status = $status");
     params.status = filter.status;
@@ -258,6 +268,50 @@ export function listJobs(filter: ListFilter = {}): DownloadJob[] {
     )
     .all(params) as Row[];
   return rows.map(rowToJob);
+}
+
+/**
+ * What one member has put through the app.
+ *
+ * Counts children too — a playlist of forty videos is forty downloads, and
+ * hiding them behind their parent would understate the load by an order of
+ * magnitude. Bytes come from the jobs rather than from the disk, so a file
+ * deleted afterwards still shows in what was fetched; disk usage is measured
+ * separately, from the folder itself.
+ */
+export function downloadStatsFor(userId: string): {
+  total: number;
+  completed: number;
+  failed: number;
+  bytesFetched: number;
+  lastDownloadAt: string | null;
+} {
+  const row = db
+    .prepare(
+      `SELECT
+         COUNT(*)                                        AS total,
+         SUM(status = 'completed')                       AS completed,
+         SUM(status IN ('error','canceled'))             AS failed,
+         COALESCE(SUM(CASE WHEN status = 'completed'
+                           THEN fileSizeBytes END), 0)   AS bytesFetched,
+         MAX(createdAt)                                  AS lastDownloadAt
+       FROM downloads
+       WHERE userId = ? AND isPlaylistParent = 0`,
+    )
+    .get(userId) as unknown as {
+    total: number;
+    completed: number | null;
+    failed: number | null;
+    bytesFetched: number;
+    lastDownloadAt: string | null;
+  };
+  return {
+    total: row?.total ?? 0,
+    completed: row?.completed ?? 0,
+    failed: row?.failed ?? 0,
+    bytesFetched: row?.bytesFetched ?? 0,
+    lastDownloadAt: row?.lastDownloadAt ?? null,
+  };
 }
 
 export function listChildren(parentId: string): DownloadJob[] {

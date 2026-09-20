@@ -1,7 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import {
+  HardDrive,
+  History,
   Link2,
   Loader2,
   Lock,
@@ -51,8 +54,9 @@ import {
   useSaveGroup,
   useSaveUser,
   useUsers,
+  useUserStats,
 } from "@/lib/hooks";
-import { formatDate } from "@/lib/format";
+import { formatBytes, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 /** The boolean permissions, in the order they are worth reading. */
@@ -154,6 +158,100 @@ export function MembersCard() {
   );
 }
 
+/**
+ * What one member is using, under their permissions.
+ *
+ * Fetched only when the row is expanded: the disk figures mean walking their
+ * folder, and doing that for every account on every render of the settings
+ * page would turn a list into a scan of the whole library.
+ *
+ * Disk usage and bytes fetched deliberately disagree — a file deleted after
+ * download still counts as fetched — so they are labelled apart rather than
+ * reconciled into one number that would be wrong for both questions.
+ */
+function UserStatsPanel({
+  user,
+  formatWhen,
+}: {
+  user: User;
+  formatWhen: (iso: string) => string;
+}) {
+  const { t, intl } = useI18n();
+  const a = t.settings.accounts;
+  const { data: stats, isLoading } = useUserStats(user.id);
+
+  return (
+    <div className="mt-3 border-t pt-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <h4 className="text-xs font-medium text-muted-foreground">{a.usage}</h4>
+        <div className="ml-auto flex gap-2">
+          <Button size="sm" variant="outline" render={<Link href={`/history?user=${user.id}`} />}>
+            <History className="size-4" />
+            {a.viewHistory}
+          </Button>
+        </div>
+      </div>
+
+      {isLoading || !stats ? (
+        <p className="mt-2 text-xs text-muted-foreground">{t.common.loading}</p>
+      ) : (
+        <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs sm:grid-cols-4">
+          {stats.scoped ? (
+            <Stat
+              icon={<HardDrive className="size-3" />}
+              label={a.diskUsed}
+              value={formatBytes(stats.diskBytes, intl)}
+            />
+          ) : (
+            // Someone who browses the whole library has no folder of their
+            // own; repeating the instance-wide gauge here would be a number
+            // about the server pretending to be about the person.
+            <Stat
+              icon={<HardDrive className="size-3" />}
+              label={a.diskUsed}
+              value={a.wholeLibrary}
+            />
+          )}
+          <Stat label={a.fileCount} value={String(stats.fileCount)} />
+          <Stat label={a.downloadCount} value={String(stats.total)} />
+          <Stat
+            label={a.fetched}
+            value={formatBytes(stats.bytesFetched, intl)}
+          />
+          <Stat label={a.completedCount} value={String(stats.completed)} />
+          <Stat label={a.failedCount} value={String(stats.failed)} />
+          <Stat
+            label={a.lastDownload}
+            value={
+              stats.lastDownloadAt ? formatWhen(stats.lastDownloadAt) : a.never
+            }
+          />
+        </dl>
+      )}
+    </div>
+  );
+}
+
+function Stat({
+  icon,
+  label,
+  value,
+}: {
+  icon?: React.ReactNode;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <dt className="flex items-center gap-1 text-muted-foreground">
+        {icon}
+        {label}
+      </dt>
+      <dd className="font-medium tabular-nums">{value}</dd>
+    </div>
+  );
+}
+
 function MemberRow({
   user,
   groups,
@@ -210,7 +308,11 @@ function MemberRow({
         <div className="ml-auto flex items-center gap-2">
           <Select value={user.groupId} onValueChange={(v) => v && onGroup(v)}>
             <SelectTrigger className="h-8 w-36">
-              <SelectValue />
+              {/* Without this the control shows the group's id rather than its
+                  name, since it has no item list to resolve against. */}
+              <SelectValue>
+                {(v: string) => groups.find((g) => g.id === v)?.name ?? v}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {groups.map((g) => (
@@ -277,17 +379,20 @@ function MemberRow({
       </div>
 
       {open && (
-        <div className="mt-3 grid gap-2 border-t pt-3 sm:grid-cols-2">
-          {FLAGS.map((flag) => (
-            <Toggle
-              key={flag}
-              label={a.permissions[flag]}
-              hint={user.overrides[flag] === null ? a.inherited : undefined}
-              checked={Boolean(user.effective[flag])}
-              onChange={(next) => onOverride(flag, next)}
-            />
-          ))}
-        </div>
+        <>
+          <div className="mt-3 grid gap-2 border-t pt-3 sm:grid-cols-2">
+            {FLAGS.map((flag) => (
+              <Toggle
+                key={flag}
+                label={a.permissions[flag]}
+                hint={user.overrides[flag] === null ? a.inherited : undefined}
+                checked={Boolean(user.effective[flag])}
+                onChange={(next) => onOverride(flag, next)}
+              />
+            ))}
+          </div>
+          <UserStatsPanel user={user} formatWhen={formatWhen} />
+        </>
       )}
 
       {/*
@@ -454,7 +559,9 @@ export function InvitesCard() {
         <div className="flex flex-wrap items-center gap-2">
           <Select value={groupId} onValueChange={(v) => v && setGroupId(v)}>
             <SelectTrigger className="h-9 w-44">
-              <SelectValue />
+              <SelectValue>
+                {(v: string) => groups?.find((g) => g.id === v)?.name ?? v}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {groups?.map((g) => (

@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { History, Search } from "lucide-react";
 import type { DownloadStatus } from "@app/shared";
 import { Input } from "@/components/ui/input";
@@ -14,6 +15,12 @@ import {
 import { AnimatePresence } from "motion/react";
 import { JobCard } from "@/components/job-card";
 import { useDownloads } from "@/lib/hooks";
+import {
+  JobScopeSelect,
+  scopeFromKey,
+  useJobAuthor,
+  type ScopeKey,
+} from "@/components/job-scope";
 import { PAGE_COLUMN, cn } from "@/lib/utils";
 import { useI18n } from "@/components/i18n-provider";
 
@@ -32,11 +39,28 @@ const ACTIVE: DownloadStatus[] = [
   "processing",
 ];
 
+/**
+ * Wrapped in Suspense because `useSearchParams` opts the route out of static
+ * rendering otherwise, which fails the build rather than degrading.
+ */
 export default function HistoryPage() {
+  return (
+    <Suspense fallback={null}>
+      <HistoryView />
+    </Suspense>
+  );
+}
+
+function HistoryView() {
   const { t } = useI18n();
-  const { data: jobs, isLoading } = useDownloads();
+  const params = useSearchParams();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
+  // Arriving from the accounts page opens straight on that member's history,
+  // which is the whole point of the button there.
+  const [scope, setScope] = useState<ScopeKey>(params.get("user") ?? "all");
+  const { data: jobs, isLoading } = useDownloads(scopeFromKey(scope));
+  const nameOf = useJobAuthor();
 
   const filtered = useMemo(() => {
     let list = jobs ?? [];
@@ -78,7 +102,14 @@ export default function HistoryPage() {
         </div>
         <Select value={filter} onValueChange={(v) => setFilter(v ?? "all")}>
           <SelectTrigger className="h-9 sm:w-40">
-            <SelectValue />
+            {/* The label has to be spelled out: left to itself the control
+                shows the raw value, which is why the selected filter stayed in
+                English while the list was translated. */}
+            <SelectValue>
+              {(v: string) =>
+                t.history.filters[v as (typeof FILTERS)[number]] ?? v
+              }
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {FILTERS.map((f) => (
@@ -88,6 +119,7 @@ export default function HistoryPage() {
             ))}
           </SelectContent>
         </Select>
+        <JobScopeSelect value={scope} onChange={setScope} className="h-9 sm:w-44" />
       </div>
 
       {isLoading ? (
@@ -105,7 +137,12 @@ export default function HistoryPage() {
         <div className="flex flex-col gap-2">
           <AnimatePresence initial={false}>
             {filtered.map((job) => (
-              <JobCard key={job.id} job={job} />
+              <JobCard
+                key={job.id}
+                job={job}
+                // Only when the list can hold more than one person's jobs.
+                authorName={scope === "all" ? nameOf(job.userId) : null}
+              />
             ))}
           </AnimatePresence>
         </div>

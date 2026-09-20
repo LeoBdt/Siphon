@@ -117,7 +117,7 @@ function runJob(jobId: string): Promise<void> {
         }),
       );
     },
-    onLog: (line) => jobEvents.emitLog(jobId, line),
+    onLog: (line) => jobEvents.emitLog(jobId, line, job.userId ?? null),
   });
   active.set(jobId, handle);
 

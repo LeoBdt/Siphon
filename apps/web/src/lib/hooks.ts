@@ -15,6 +15,7 @@ import type {
   PermissionOverrides,
   Permissions,
   User,
+  UserStats,
   CleanupResult,
   CreateDownloadRequest,
   DiskUsage,
@@ -30,10 +31,25 @@ import { apiFetch, apiUrl } from "./api";
 // Downloads
 // ---------------------------------------------------------------------------
 
-export function useDownloads() {
+/**
+ * Jobs, optionally narrowed to one member.
+ *
+ * `scope` is only honoured for an administrator — the server pins everyone
+ * else to their own id whatever is asked, so this is a view control rather
+ * than a permission. "all" and "mine" are spelled out instead of using an
+ * empty string, which would be indistinguishable from "not chosen yet".
+ */
+export type JobScope = "all" | "mine" | { userId: string };
+
+export function useDownloads(scope: JobScope = "all") {
+  const userId =
+    typeof scope === "object" ? scope.userId : scope === "mine" ? "me" : null;
   return useQuery({
-    queryKey: ["downloads"],
-    queryFn: () => apiFetch<DownloadJob[]>("/api/downloads"),
+    queryKey: ["downloads", userId ?? "all"],
+    queryFn: () =>
+      apiFetch<DownloadJob[]>(
+        userId ? `/api/downloads?userId=${encodeURIComponent(userId)}` : "/api/downloads",
+      ),
   });
 }
 
@@ -243,10 +259,22 @@ export function useLogout() {
   });
 }
 
-export function useUsers() {
+export function useUsers(opts: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ["users"],
+    // Administrators only. Callers that render for everyone pass `enabled` so
+    // a member does not fire a request that can only come back refused.
+    enabled: opts.enabled ?? true,
     queryFn: () => apiFetch<User[]>("/api/admin/users"),
+  });
+}
+
+/** What one member is using and has fetched. Administrators only. */
+export function useUserStats(userId: string | null) {
+  return useQuery({
+    queryKey: ["user-stats", userId],
+    enabled: Boolean(userId),
+    queryFn: () => apiFetch<UserStats>(`/api/admin/users/${userId}/stats`),
   });
 }
 

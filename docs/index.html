@@ -446,6 +446,32 @@
         margin-left: auto;
       }
 
+      /*
+        Theme changes fade instead of snapping.
+
+        The class is added for the length of the change and removed after, so
+        the transition applies to the switch alone: leaving it on would make
+        every hover state on the page lag behind the pointer by a fifth of a
+        second.
+
+        Scoped to the properties that actually carry a palette. Transitioning
+        `all` would drag layout properties into the animation and make a long
+        page crawl.
+      */
+      @media (prefers-reduced-motion: no-preference) {
+        html.theme-switching,
+        html.theme-switching *,
+        html.theme-switching *::before,
+        html.theme-switching *::after {
+          transition:
+            background-color 220ms var(--ease),
+            border-color 220ms var(--ease),
+            color 220ms var(--ease),
+            fill 220ms var(--ease),
+            stroke 220ms var(--ease) !important;
+        }
+      }
+
       @media (prefers-reduced-motion: reduce) {
         html {
           scroll-behavior: auto;
@@ -565,6 +591,25 @@
           </article>
 
           <article class="card">
+            <h3>Accounts and permissions</h3>
+            <p>
+              Invite people rather than creating accounts for them — they pick
+              their own name and password. Permissions default from a group and
+              can be overridden per person: who may download, keep files, manage
+              the library, or see beyond their own folder.
+            </p>
+          </article>
+
+          <article class="card">
+            <h3>Everyone in their own space</h3>
+            <p>
+              A confined member works in a folder of their own and sees only
+              their own queue and history. An administrator can widen the view
+              to anyone, and read what each account is using.
+            </p>
+          </article>
+
+          <article class="card">
             <h3>Keeps itself tidy</h3>
             <p>
               Disk usage at a glance, one-click <code>yt-dlp</code> updates, and a
@@ -590,7 +635,7 @@
             <button class="copy" type="button" data-copy>Copy</button>
           </div>
           <pre id="install-cmd"><span class="p">$</span> curl -O https://raw.githubusercontent.com/LeoBdt/Siphon/main/docker-compose.yml
-<span class="c"># optional, if 8080 is taken: echo "SIPHON_PORT=8081" &gt; .env</span>
+<span class="c"># optional, if 8080 is taken: echo "SIPHON_PORT=XXXX" &gt; .env</span>
 <span class="p">$</span> docker compose up -d</pre>
         </div>
 
@@ -599,8 +644,8 @@
           is self-contained — all three images carry what they need, so there is
           nothing else to fetch and nothing to build. Set
           <code>SIPHON_PORT</code> in a <code>.env</code> file beside the compose
-          file to move it, and <code>DATA_DIR</code> to put the library on a
-          bigger disk.
+          file to move it — put your own port where the placeholder is — and
+          <code>DATA_DIR</code> to put the library on a bigger disk.
         </p>
 
         <div class="alt">
@@ -632,9 +677,10 @@
           <div>
             <h3>Before you put it on the internet</h3>
             <p>
-              Siphon has no authentication yet. It runs processes and reaches the
-              file system, so it belongs on a private network or behind
-              protection at your reverse proxy — not on an open port.
+              Siphon signs people in, locks an account after repeated failures,
+              and offers two-factor authentication — but it does not terminate
+              TLS. On an open port, put it behind a reverse proxy that does, so
+              passwords and session cookies are not sent in the clear.
             </p>
             <p>
               It is a personal tool for archiving and offline playback. What you
@@ -667,12 +713,22 @@
       } catch {
         // Private mode or blocked storage: the OS preference still applies.
       }
+      let themeTimer;
       document.querySelector("[data-theme-toggle]")?.addEventListener("click", () => {
         const dark =
           root.dataset.theme === "dark" ||
           (!root.dataset.theme &&
             matchMedia("(prefers-color-scheme: dark)").matches);
         const next = dark ? "light" : "dark";
+        // Enable the fade only around the change, then take it back off so
+        // ordinary hovers stay instant. Re-clicking restarts the timer rather
+        // than letting an earlier one cut the new fade short.
+        root.classList.add("theme-switching");
+        clearTimeout(themeTimer);
+        themeTimer = setTimeout(
+          () => root.classList.remove("theme-switching"),
+          260,
+        );
         root.dataset.theme = next;
         try {
           localStorage.setItem("theme", next);

@@ -439,6 +439,35 @@ export interface AuditEntry {
   ip: string | null;
 }
 
+/**
+ * What one member is using, for the administrator's view of an account.
+ *
+ * Disk figures are walked from their folder; the download counts come from the
+ * job history. The two disagree on purpose — a deleted file still counts as
+ * fetched — and the interface labels them separately rather than reconciling
+ * them into one misleading number.
+ */
+export interface UserStats {
+  userId: string;
+  /**
+   * False for anyone who browses the whole library, whose usage is the
+   * instance's own. The interface then shows the shared disk gauge instead of
+   * repeating it per account.
+   */
+  scoped: boolean;
+  diskBytes: number;
+  fileCount: number;
+  folderCount: number;
+  /** Jobs started, counting playlist entries individually. */
+  total: number;
+  completed: number;
+  /** Errored or canceled. */
+  failed: number;
+  /** Sum of the completed jobs' file sizes, including files since deleted. */
+  bytesFetched: number;
+  lastDownloadAt: string | null;
+}
+
 /** Why a sign-in was refused, when the reason is worth telling the user. */
 export interface LockedOut {
   lockedUntil: string;

@@ -1,15 +1,17 @@
 import { createReadStream } from "node:fs";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply } from "fastify";
 import type {
   CreateDownloadRequest,
   DownloadStatus,
   RetentionMode,
+  User,
 } from "@app/shared";
 import { config } from "../config.js";
 import { requirePermission } from "../auth/guard.js";
 import { libraryRootFor } from "../auth/scope.js";
+import { mayTouchJob } from "../auth/ownership.js";
 import {
   getJob,
   listChildren,
@@ -42,11 +44,20 @@ export async function downloadsRoutes(app: FastifyInstance) {
   // List top-level jobs (playlist children are nested under their parent).
   app.get("/api/downloads", async (req) => {
     const q = req.query as Record<string, string | undefined>;
+    const isAdmin = req.user?.effective.isAdmin ?? false;
+    // Only an administrator may widen the view, and only by asking. Everyone
+    // else is pinned to their own id here rather than being filtered in the
+    // browser, so the other rows never leave the server.
+    // "me" lets an administrator narrow to their own jobs without the client
+    // having to know its own id.
+    const asked = q.userId === "me" ? req.user?.id : q.userId;
+    const userId = isAdmin ? (asked || undefined) : req.user?.id;
     const filter: ListFilter = {
       status: q.status as DownloadStatus | undefined,
       search: q.search,
       limit: q.limit ? Number(q.limit) : undefined,
       offset: q.offset ? Number(q.offset) : undefined,
+      userId,
     };
     return listJobs(filter);
   });
@@ -56,6 +67,11 @@ export async function downloadsRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const job = getJob(id);
     if (!job) return reply.code(404).send({ code: "not_found", error: "Not found" });
+    // 404 rather than 403: confirming a job exists would let someone walk the
+    // id space and learn what other people are fetching.
+    if (!mayTouchJob(job, req.user)) {
+      return reply.code(404).send({ code: "not_found", error: "Not found" });
+    }
     return {
       ...job,
       children: job.isPlaylistParent ? listChildren(id) : undefined,
@@ -141,8 +157,8 @@ export async function downloadsRoutes(app: FastifyInstance) {
       return reply.code(404).send({ code: "not_found", error: "Not found" });
     }
     // Someone else's download is not yours to collect.
-    if (job.userId && job.userId !== req.user?.id && !req.user?.effective.isAdmin) {
-      return reply.code(403).send({ code: "forbidden", error: "Not allowed" });
+    if (!mayTouchJob(job, req.user)) {
+      return reply.code(404).send({ code: "not_found", error: "Not found" });
     }
 
     const name = job.outputFile.split(/[\/]/).pop() ?? "download";
@@ -162,24 +178,38 @@ export async function downloadsRoutes(app: FastifyInstance) {
     return reply.send(stream);
   });
 
-  app.post("/api/downloads/:id/retry", async (req, reply) => {
+  /**
+   * Retry, cancel and delete all act on someone's job, so each one checks
+   * ownership before touching it. Without that, knowing an id was enough to
+   * cancel a stranger's download.
+   */
+  const ownJob = (req: { params: unknown; user?: User }, reply: FastifyReply) => {
     const { id } = req.params as { id: string };
-    const job = retryDownload(id);
+    const job = getJob(id);
+    if (!job || !mayTouchJob(job, req.user)) {
+      reply.code(404).send({ code: "not_found", error: "Not found" });
+      return null;
+    }
+    return job;
+  };
+
+  app.post("/api/downloads/:id/retry", async (req, reply) => {
+    if (!ownJob(req, reply)) return reply;
+    const job = retryDownload((req.params as { id: string }).id);
     if (!job) return reply.code(404).send({ code: "not_found", error: "Not found" });
     return job;
   });
 
   app.post("/api/downloads/:id/cancel", async (req, reply) => {
-    const { id } = req.params as { id: string };
-    const job = cancelDownload(id);
+    if (!ownJob(req, reply)) return reply;
+    const job = cancelDownload((req.params as { id: string }).id);
     if (!job) return reply.code(404).send({ code: "not_found", error: "Not found" });
     return job;
   });
 
   app.delete("/api/downloads/:id", async (req, reply) => {
-    const { id } = req.params as { id: string };
-    if (!getJob(id)) return reply.code(404).send({ code: "not_found", error: "Not found" });
-    removeDownload(id);
+    if (!ownJob(req, reply)) return reply;
+    removeDownload((req.params as { id: string }).id);
     return reply.code(204).send();
   });
 }

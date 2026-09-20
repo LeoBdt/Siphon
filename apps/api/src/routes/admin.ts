@@ -5,9 +5,13 @@ import type {
   Permissions,
   User,
 } from "@app/shared";
-import type { AuditEntry, Invite } from "@app/shared";
+import type { AuditEntry, Invite, UserStats } from "@app/shared";
 import { rm } from "node:fs/promises";
+import { join } from "node:path";
+import { config } from "../config.js";
 import { listAudit, record } from "../auth/audit.js";
+import { downloadStatsFor } from "../db.js";
+import { dirUsage } from "../lib/dir-size.js";
 import { resolveInsideRoot } from "../lib/paths.js";
 import {
   GROUP_ADMIN_ID,
@@ -208,6 +212,38 @@ export async function adminRoutes(app: FastifyInstance) {
       });
     }
     return reply.code(204).send();
+  });
+
+  /**
+   * What one member is using and has fetched.
+   *
+   * Disk usage is walked from their folder rather than summed from the job
+   * rows: files can be deleted, moved in from elsewhere, or left over from a
+   * job whose record was removed, and the number an administrator needs is
+   * what is on the disk now. The job counts answer a different question — how
+   * much has gone through the app — so both are reported.
+   */
+  app.get("/api/admin/users/:id/stats", adminOnly, async (req, reply): Promise<UserStats | undefined> => {
+    const { id } = req.params as { id: string };
+    const target = getUser(id);
+    if (!target) {
+      reply.code(404).send({ code: "not_found", error: "Not found" });
+      return undefined;
+    }
+    // An administrator's own "folder" is the whole library, since that is what
+    // they browse; reporting it would restate the disk gauge on the same page.
+    const scoped = !target.effective.canBrowseWholeLibrary;
+    const usage = scoped
+      ? await dirUsage(join(config.rootDir, "users", target.libraryDir))
+      : { bytes: 0, files: 0, folders: 0 };
+    return {
+      userId: id,
+      scoped,
+      diskBytes: usage.bytes,
+      fileCount: usage.files,
+      folderCount: usage.folders,
+      ...downloadStatsFor(id),
+    };
   });
 
   app.get("/api/admin/audit", adminOnly, async (req): Promise<AuditEntry[]> => {

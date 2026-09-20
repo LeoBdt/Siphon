@@ -107,7 +107,11 @@ export default function DownloadPage() {
   const rickRolled = validUrl && isRickRoll(debouncedUrl);
   const probe = useProbe(debouncedUrl, validUrl);
   const create = useCreateDownload();
-  const { data: jobs } = useDownloads();
+  // This page is personal for everyone, administrators included: you come here
+  // to start your own download and follow it. Watching other people's jobs
+  // scroll past would be noise, not information — supervision belongs in the
+  // history, which is where the whole-instance view lives.
+  const { data: jobs } = useDownloads("mine");
 
   const info = probe.data;
   const isPlaylist = !!info?.isPlaylist;

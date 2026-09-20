@@ -68,16 +68,28 @@ export function WsProvider({ children }: { children: ReactNode }) {
           qc.invalidateQueries({ queryKey: ["disk"] });
         }
 
-        // Merge into the downloads list cache.
-        qc.setQueryData<DownloadJob[]>(["downloads"], (old) => {
-          if (!old) return old;
-          if (job.playlistId) return old; // children aren't in the top-level list
+        // Merge into every cached downloads list — there is one per scope now
+        // that an administrator can narrow the view to a single member.
+        if (job.playlistId) return; // children aren't in the top-level list
+        for (const query of qc.getQueryCache().findAll({ queryKey: ["downloads"] })) {
+          const old = query.state.data as DownloadJob[] | undefined;
+          if (!old) continue;
           const idx = old.findIndex((j) => j.id === job.id);
-          if (idx === -1) return [job, ...old];
-          const next = [...old];
-          next[idx] = job;
-          return next;
-        });
+          if (idx !== -1) {
+            const next = [...old];
+            next[idx] = job;
+            qc.setQueryData(query.queryKey, next);
+            continue;
+          }
+          // A job this list has never seen. Only the unfiltered list can be
+          // certain it belongs there; a list narrowed to one member would have
+          // to know whose job it is, so it refetches rather than guesses.
+          if (query.queryKey[1] === "all") {
+            qc.setQueryData(query.queryKey, [job, ...old]);
+          } else {
+            void qc.invalidateQueries({ queryKey: query.queryKey });
+          }
+        }
       };
 
       socket.onclose = () => {

@@ -1,7 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-     stroke="currentColor" stroke-width="2" stroke-linecap="round"
-     stroke-linejoin="round" role="img" aria-label="Siphon">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"
+     role="img" aria-label="Siphon">
+  <!--
+    The favicon, same badge as the README mark: a browser tab sits on whatever
+    chrome the visitor's theme gives it, so the icon carries its own background
+    instead of inheriting a colour it cannot predict.
+  -->
+  <rect width="64" height="64" rx="14" fill="#0A0A0A" />
+  <rect x="0.5" y="0.5" width="63" height="63" rx="13.5" fill="none"
+        stroke="#FFFFFF" stroke-opacity="0.14" />
+
   <!-- The siphon tube: up, over the bend, then down and out. -->
-  <path d="M6 17V9a6 6 0 0 1 12 0v10" />
-  <path d="M14.5 15.5 18 19l3.5-3.5" />
+  <g transform="translate(4.5 10) scale(2)" fill="none" stroke="#FFFFFF"
+     stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6 17V9a6 6 0 0 1 12 0v10" />
+    <path d="M14.5 15.5 18 19l3.5-3.5" />
+  </g>
 </svg>
