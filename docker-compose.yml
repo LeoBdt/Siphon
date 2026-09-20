@@ -13,6 +13,9 @@
 
 services:
   api:
+    # Published by CI. `docker compose pull` fetches it; `up -d --build`
+    # rebuilds from source instead, for local work or an unreleased change.
+    image: ghcr.io/leobdt/siphon-api:latest
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -32,6 +35,7 @@ services:
       - "3001"
 
   web:
+    image: ghcr.io/leobdt/siphon-web:latest
     build:
       context: .
       dockerfile: apps/web/Dockerfile

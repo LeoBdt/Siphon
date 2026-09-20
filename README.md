@@ -109,31 +109,79 @@ the active language.
 
 ## Deployment
 
-The Docker images bundle Node, `ffmpeg` and `yt-dlp`. A Caddy proxy fronts both
-services, so the browser only ever talks to one origin — nothing about the host
-is baked into the images, and CORS never comes into play.
+The images bundle Node, `ffmpeg` and `yt-dlp`. A Caddy proxy fronts both
+services and is the only one to publish a port, so the browser talks to a single
+origin: nothing about the host is baked into the images, and CORS never comes
+into play.
+
+**Every command below is run from the repository root** — the directory holding
+`docker-compose.yml`. Compose reads that file from the current directory, and
+the default data path is relative to it.
+
+The images are published to GitHub's registry, so a deployment is a pull rather
+than a multi-minute compile on the target machine:
 
 ```bash
-mkdir -p data && sudo chown -R 1000:1000 data   # containers run as uid 1000
+mkdir -p /opt/siphon && cd /opt/siphon
+curl -O https://raw.githubusercontent.com/LeoBdt/Siphon/main/docker-compose.yml
+mkdir -p data && sudo chown -R 1000:1000 data
+docker compose up -d
+```
+
+To build from source instead — for development, or to run an unreleased
+change — clone the repository and add `--build`:
+
+```bash
+# Clone wherever you keep third-party applications; /opt is the usual place.
+sudo mkdir -p /opt/siphon && sudo chown "$USER:$USER" /opt/siphon
+git clone https://github.com/LeoBdt/Siphon.git /opt/siphon
+cd /opt/siphon
+
+# Optional settings, read at startup (see the table below).
+echo "SIPHON_PORT=8080" > .env
+
+# The containers run as uid 1000 and must be able to write here.
+mkdir -p data && sudo chown -R 1000:1000 data
+
 docker compose up -d --build
 ```
 
 The app is then on `http://<host>:8080`.
 
+### Settings
+
+Put these in a `.env` file next to `docker-compose.yml`. They are read when the
+containers start, so changing one needs `docker compose up -d`, never a rebuild.
+
 | Variable | Purpose | Default |
 |---|---|---|
 | `SIPHON_PORT` | Port published on the host | `8080` |
-| `SIPHON_BIND` | Address to bind to, e.g. `127.0.0.1` to keep it local | `0.0.0.0` |
+| `SIPHON_BIND` | Address to bind to — `127.0.0.1` keeps it off the network | `0.0.0.0` |
 | `DATA_DIR` | Where downloads and the database live | `./data` |
+| `MAX_CONCURRENT_DOWNLOADS` | Initial concurrency; the Settings page overrides it | `2` |
 
-Put them in a `.env` file next to `docker-compose.yml`. Downloads, the scratch
-space and the SQLite database all land under `DATA_DIR`, on the host, so they
-outlive the containers and back up like ordinary files. Keep that directory on
-a single filesystem: the scratch space sits beside the library precisely so a
-finished download is moved with a rename rather than copied.
+Leave `DATA_DIR` out unless you want the library somewhere else — on a larger
+disk, typically. Point it at a path you have created and given to uid 1000, and
+keep it **on a single filesystem**: the scratch space for downloads in progress
+sits beside the library so a finished file is moved with a rename instead of
+being copied.
 
-For a public deployment, point your own TLS-terminating proxy at
-`SIPHON_PORT` — and read the next section first.
+### Day to day
+
+```bash
+cd /opt/siphon
+docker compose ps                           # what is running
+docker compose logs -f api                  # follow a service
+docker compose down                         # stop (data is untouched)
+docker compose pull && docker compose up -d # update (published images)
+```
+
+`docker compose down` removes the containers, not your files: the library and
+the database live in `DATA_DIR` on the host. Only `down -v` destroys volumes,
+and it is never needed here.
+
+For a public deployment, point your own TLS-terminating proxy at `SIPHON_PORT`
+— and read the next section first.
 
 ## Security
 
