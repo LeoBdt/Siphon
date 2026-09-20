@@ -1,0 +1,21 @@
+{
+  "name": "siphon",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.13.0",
+  "scripts": {
+    "dev": "concurrently --kill-others --names web,api --prefix-colors cyan,green \"pnpm --filter @app/web dev\" \"pnpm --filter @app/api dev\"",
+    "dev:web": "pnpm --filter @app/web dev",
+    "dev:api": "pnpm --filter @app/api dev",
+    "build": "pnpm --filter @app/shared --filter @app/api --filter @app/web build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

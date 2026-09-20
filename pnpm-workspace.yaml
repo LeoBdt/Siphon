@@ -1,0 +1,17 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+allowBuilds:
+  esbuild: true
+  sharp: true
+  unrs-resolver: true
+
+# Build scripts we explicitly allow to run (pnpm blocks them by default).
+# esbuild: required by tsx to run the API in dev.
+# sharp: native image optimization used by Next.js.
+# unrs-resolver: native resolver used by the ESLint/Next toolchain.
+onlyBuiltDependencies:
+  - esbuild
+  - sharp
+  - unrs-resolver

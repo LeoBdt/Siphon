@@ -1,0 +1,12 @@
+# Normalise line endings in the repository to LF.
+# The project is developed on Windows but built and run on Linux in Docker, so
+# without this every file would be stored with CRLF and shell scripts would
+# break inside the image.
+* text=auto eol=lf
+
+# Binary assets must never be touched.
+*.png binary
+*.jpg binary
+*.ico binary
+*.webm binary
+*.mp4 binary

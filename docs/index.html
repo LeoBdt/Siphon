@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Siphon — self-hosted media downloader</title>
+    <meta
+      name="description"
+      content="A self-hosted web interface for yt-dlp. Pick your quality, watch progress live, keep an organised library. Runs on your own machine."
+    />
+    <link rel="icon" href="logo.svg" type="image/svg+xml" />
+
+    <meta property="og:title" content="Siphon" />
+    <meta property="og:description" content="A self-hosted media downloader built on yt-dlp." />
+    <meta property="og:type" content="website" />
+
+    <style>
+      /* Palette mirrors the app's tokens, light and dark. */
+      :root {
+        --bg: oklch(1 0 0);
+        --fg: oklch(0.145 0 0);
+        --muted: oklch(0.556 0 0);
+        --surface: oklch(0.985 0 0);
+        --border: oklch(0.922 0 0);
+        --accent: oklch(0.205 0 0);
+        --accent-fg: oklch(0.985 0 0);
+        --radius: 0.75rem;
+        --ease: cubic-bezier(0.23, 1, 0.32, 1);
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: oklch(0.145 0 0);
+          --fg: oklch(0.985 0 0);
+          --muted: oklch(0.708 0 0);
+          --surface: oklch(0.205 0 0);
+          --border: oklch(1 0 0 / 12%);
+          --accent: oklch(0.922 0 0);
+          --accent-fg: oklch(0.205 0 0);
+        }
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      html {
+        -webkit-text-size-adjust: 100%;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+          Helvetica, Arial, sans-serif;
+        font-size: 16px;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+      }
+      /* The same dotted ground the app uses. */
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        background-image: radial-gradient(
+          color-mix(in oklch, var(--muted) 20%, transparent) 1px,
+          transparent 1px
+        );
+        background-size: 16px 16px;
+      }
+
+      .wrap {
+        max-width: 60rem;
+        margin-inline: auto;
+        padding-inline: 1.25rem;
+      }
+
+      a {
+        color: inherit;
+      }
+
+      /* ---- Header ---------------------------------------------------- */
+      header {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        padding-top: env(safe-area-inset-top, 0px);
+        background: color-mix(in oklch, var(--bg) 85%, transparent);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid var(--border);
+      }
+      .bar {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        height: 3.5rem;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        text-decoration: none;
+      }
+      .brand svg {
+        width: 1.5rem;
+        height: 1.5rem;
+      }
+      .bar nav {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 1.25rem;
+        font-size: 0.9rem;
+      }
+      .bar nav a {
+        color: var(--muted);
+        text-decoration: none;
+        transition: color 150ms var(--ease);
+      }
+      .bar nav a:hover {
+        color: var(--fg);
+      }
+      @media (max-width: 34rem) {
+        .bar nav .hide-sm {
+          display: none;
+        }
+      }
+
+      /* ---- Hero ------------------------------------------------------ */
+      .hero {
+        padding-block: 5rem 3.5rem;
+        text-align: center;
+      }
+      .hero .mark {
+        width: 4rem;
+        height: 4rem;
+        margin-inline: auto;
+        display: block;
+      }
+      h1 {
+        margin: 1.75rem 0 0;
+        font-size: clamp(2.25rem, 6vw, 3.5rem);
+        line-height: 1.1;
+        letter-spacing: -0.03em;
+        font-weight: 650;
+      }
+      .lede {
+        max-width: 34rem;
+        margin: 1rem auto 0;
+        color: var(--muted);
+        font-size: 1.1rem;
+      }
+      .cta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        justify-content: center;
+        margin-top: 2rem;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.65rem 1.15rem;
+        border-radius: var(--radius);
+        border: 1px solid var(--border);
+        font-size: 0.95rem;
+        font-weight: 500;
+        text-decoration: none;
+        transition:
+          transform 150ms var(--ease),
+          background-color 150ms var(--ease),
+          border-color 150ms var(--ease);
+      }
+      .btn:active {
+        transform: scale(0.97);
+      }
+      .btn-primary {
+        background: var(--accent);
+        color: var(--accent-fg);
+        border-color: var(--accent);
+      }
+      .btn-ghost:hover {
+        background: var(--surface);
+        border-color: color-mix(in oklch, var(--fg) 25%, transparent);
+      }
+
+      /* ---- Sections -------------------------------------------------- */
+      section {
+        padding-block: 3.5rem;
+      }
+      h2 {
+        margin: 0 0 0.5rem;
+        font-size: 1.6rem;
+        letter-spacing: -0.02em;
+        font-weight: 600;
+      }
+      .section-lede {
+        margin: 0 0 2rem;
+        color: var(--muted);
+      }
+
+      .grid {
+        display: grid;
+        gap: 1rem;
+        grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+      }
+      .card {
+        padding: 1.25rem;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--surface);
+      }
+      .card h3 {
+        margin: 0 0 0.35rem;
+        font-size: 1rem;
+        font-weight: 600;
+      }
+      .card p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.925rem;
+      }
+
+      /* ---- Code ------------------------------------------------------ */
+      pre {
+        margin: 0;
+        padding: 1rem 1.15rem;
+        overflow-x: auto;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--surface);
+        font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+          monospace;
+        font-size: 0.85rem;
+        line-height: 1.7;
+      }
+      code {
+        font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+          monospace;
+        font-size: 0.9em;
+      }
+      .steps {
+        display: grid;
+        gap: 1.5rem;
+      }
+      .step h3 {
+        margin: 0 0 0.6rem;
+        font-size: 1rem;
+        font-weight: 600;
+      }
+      .step p {
+        margin: 0 0 0.75rem;
+        color: var(--muted);
+        font-size: 0.925rem;
+      }
+
+      .note {
+        padding: 1.15rem 1.25rem;
+        border: 1px solid var(--border);
+        border-left: 3px solid var(--muted);
+        border-radius: var(--radius);
+        background: var(--surface);
+      }
+      .note p {
+        margin: 0;
+        font-size: 0.925rem;
+        color: var(--muted);
+      }
+      .note strong {
+        color: var(--fg);
+      }
+
+      footer {
+        border-top: 1px solid var(--border);
+        padding-block: 2rem;
+        padding-bottom: calc(2rem + env(safe-area-inset-bottom, 0px));
+        color: var(--muted);
+        font-size: 0.875rem;
+      }
+      footer .wrap {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem 1.5rem;
+        align-items: center;
+      }
+      footer a {
+        color: var(--muted);
+      }
+      footer .spacer {
+        margin-left: auto;
+      }
+    </style>
+  </head>
+
+  <body>
+    <header>
+      <div class="wrap bar">
+        <a class="brand" href="#top">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M6 17V9a6 6 0 0 1 12 0v10" />
+            <path d="M14.5 15.5 18 19l3.5-3.5" />
+          </svg>
+          Siphon
+        </a>
+        <nav>
+          <a class="hide-sm" href="#features">Features</a>
+          <a href="#install">Install</a>
+          <a href="https://github.com/LeoBdt/Siphon">GitHub</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="top">
+      <div class="wrap hero">
+        <svg class="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
+             aria-label="Siphon" role="img">
+          <path d="M6 17V9a6 6 0 0 1 12 0v10" />
+          <path d="M14.5 15.5 18 19l3.5-3.5" />
+        </svg>
+
+        <h1>Your media, on your own machine.</h1>
+        <p class="lede">
+          Siphon is a web interface for <code>yt-dlp</code>. Paste a URL, choose a
+          quality, and watch it arrive in a library you actually browse. Nothing
+          leaves your machine.
+        </p>
+
+        <div class="cta">
+          <a class="btn btn-primary" href="#install">Get started</a>
+          <a class="btn btn-ghost" href="https://github.com/LeoBdt/Siphon">
+            View source
+          </a>
+        </div>
+      </div>
+
+      <section id="features" class="wrap">
+        <h2>What it does</h2>
+        <p class="section-lede">
+          The parts of a downloader you end up needing, rather than a wrapper
+          around a command line.
+        </p>
+
+        <div class="grid">
+          <article class="card">
+            <h3>Quality you choose</h3>
+            <p>
+              Video with sound up to 4K and 60&nbsp;fps, or audio on its own. M4A
+              and Opus are lifted straight from the source with no re-encoding,
+              so nothing is lost; MP3 is there when you need compatibility.
+            </p>
+          </article>
+
+          <article class="card">
+            <h3>Playlists and channels</h3>
+            <p>
+              Paste a playlist and pick which titles you want. Each becomes its
+              own tracked job, grouped under a parent so one failure never hides
+              in a crowd.
+            </p>
+          </article>
+
+          <article class="card">
+            <h3>Progress as it happens</h3>
+            <p>
+              Speed, time remaining and the current stage — video, audio, merge,
+              convert — pushed over a WebSocket. No polling, no guessing whether
+              it is still alive.
+            </p>
+          </article>
+
+          <article class="card">
+            <h3>A real library</h3>
+            <p>
+              Browse, rename, drag between folders, select with Ctrl or a
+              rectangle, download a folder as a ZIP. Every operation is confined
+              to one root directory.
+            </p>
+          </article>
+
+          <article class="card">
+            <h3>Plays in place</h3>
+            <p>
+              A persistent audio bar that survives navigation, and a video player
+              with fullscreen. The volume you set is remembered across both.
+            </p>
+          </article>
+
+          <article class="card">
+            <h3>Keeps itself tidy</h3>
+            <p>
+              Disk usage at a glance, one-click <code>yt-dlp</code> updates, and a
+              sweep for the leftovers an interrupted download leaves behind.
+              English and French, switchable at runtime.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section id="install" class="wrap">
+        <h2>Run it</h2>
+        <p class="section-lede">
+          Two ways in. Docker is the short one — the images already carry
+          <code>yt-dlp</code> and <code>ffmpeg</code>.
+        </p>
+
+        <div class="steps">
+          <div class="step">
+            <h3>With Docker</h3>
+            <p>
+              The library and its database live in a volume mounted at
+              <code>/data</code>, outside the containers.
+            </p>
+            <pre><code>git clone https://github.com/LeoBdt/Siphon.git
+cd Siphon
+docker compose up -d --build</code></pre>
+          </div>
+
+          <div class="step">
+            <h3>From source</h3>
+            <p>
+              Needs Node 20 or newer, plus <code>yt-dlp</code> and
+              <code>ffmpeg</code> on your <code>PATH</code>.
+            </p>
+            <pre><code>corepack enable
+pnpm install
+cp apps/api/.env.example apps/api/.env
+pnpm dev</code></pre>
+            <p>The app is then on <code>http://localhost:3000</code>.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="wrap">
+        <h2>Before you expose it</h2>
+        <div class="note">
+          <p>
+            <strong>Siphon has no authentication yet.</strong> It runs processes
+            and reaches the file system, so it belongs on a private network or
+            behind protection at your reverse proxy — not on the open internet as
+            it stands.
+          </p>
+        </div>
+        <p class="section-lede" style="margin-top: 1.5rem">
+          It is a personal tool for archiving and offline playback. What you may
+          download is governed by each platform's terms and by copyright law
+          where you live; making sure your use is lawful is your call.
+        </p>
+      </section>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span>MIT licensed</span>
+        <a href="https://github.com/LeoBdt/Siphon">Source</a>
+        <a href="https://github.com/LeoBdt/Siphon/blob/main/LICENSE">License</a>
+        <span class="spacer">
+          Built on <a href="https://github.com/yt-dlp/yt-dlp">yt-dlp</a>
+        </span>
+      </div>
+    </footer>
+  </body>
+</html>

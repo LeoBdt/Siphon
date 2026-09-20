@@ -1,0 +1,309 @@
+import { DatabaseSync } from "node:sqlite";
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
+import type { DownloadJob, DownloadStatus, QualityPresetId } from "@app/shared";
+import { config } from "./config.js";
+
+/**
+ * SQLite persistence backed by Node's built-in `node:sqlite` (no native build).
+ * A single `downloads` table stores both single-video jobs and playlist parents
+ * (isPlaylistParent = 1); child jobs reference their parent via playlistId.
+ */
+
+mkdirSync(dirname(config.dbPath), { recursive: true });
+
+export const db = new DatabaseSync(config.dbPath);
+
+db.exec(`
+  PRAGMA journal_mode = WAL;
+  CREATE TABLE IF NOT EXISTS downloads (
+    id                TEXT PRIMARY KEY,
+    url               TEXT NOT NULL,
+    title             TEXT,
+    thumbnailUrl      TEXT,
+    durationSeconds   INTEGER,
+    preset            TEXT NOT NULL,
+    destPath          TEXT NOT NULL,
+    status            TEXT NOT NULL,
+    progress          REAL NOT NULL DEFAULT 0,
+    outputFile        TEXT,
+    fileSizeBytes     INTEGER,
+    errorMessage      TEXT,
+    speedBytesPerSec  REAL,
+    etaSeconds        REAL,
+    playlistId        TEXT,
+    isPlaylistParent  INTEGER NOT NULL DEFAULT 0,
+    childCount        INTEGER,
+    phase             TEXT,
+    createdAt         TEXT NOT NULL,
+    updatedAt         TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
+  CREATE INDEX IF NOT EXISTS idx_downloads_playlist ON downloads(playlistId);
+  CREATE INDEX IF NOT EXISTS idx_downloads_created ON downloads(createdAt);
+
+  CREATE TABLE IF NOT EXISTS settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+`);
+
+// Lightweight migration: add columns introduced after the initial schema.
+for (const col of [
+  "phase TEXT",
+  "maxHeight INTEGER",
+  "maxFps INTEGER",
+  "errorCode TEXT",
+]) {
+  try {
+    db.exec(`ALTER TABLE downloads ADD COLUMN ${col}`);
+  } catch {
+    /* column already exists */
+  }
+}
+
+/** Value types accepted by node:sqlite bound parameters. */
+type SqlValue = null | number | bigint | string | Uint8Array;
+type SqlParams = Record<string, SqlValue>;
+
+type Row = {
+  id: string;
+  url: string;
+  title: string | null;
+  thumbnailUrl: string | null;
+  durationSeconds: number | null;
+  preset: string;
+  destPath: string;
+  status: string;
+  progress: number;
+  outputFile: string | null;
+  fileSizeBytes: number | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  speedBytesPerSec: number | null;
+  etaSeconds: number | null;
+  playlistId: string | null;
+  isPlaylistParent: number;
+  childCount: number | null;
+  phase: string | null;
+  maxHeight: number | null;
+  maxFps: number | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+function rowToJob(r: Row): DownloadJob {
+  return {
+    id: r.id,
+    url: r.url,
+    title: r.title,
+    thumbnailUrl: r.thumbnailUrl,
+    durationSeconds: r.durationSeconds,
+    preset: r.preset as QualityPresetId,
+    destPath: r.destPath,
+    status: r.status as DownloadStatus,
+    progress: r.progress,
+    outputFile: r.outputFile,
+    fileSizeBytes: r.fileSizeBytes,
+    errorCode: (r.errorCode as DownloadJob["errorCode"]) ?? null,
+    errorMessage: r.errorMessage,
+    speedBytesPerSec: r.speedBytesPerSec,
+    etaSeconds: r.etaSeconds,
+    playlistId: r.playlistId,
+    isPlaylistParent: r.isPlaylistParent === 1,
+    childCount: r.childCount,
+    phase: (r.phase as DownloadJob["phase"]) ?? null,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+  };
+}
+
+export interface NewJob {
+  id: string;
+  url: string;
+  title?: string | null;
+  thumbnailUrl?: string | null;
+  durationSeconds?: number | null;
+  preset: QualityPresetId;
+  destPath: string;
+  status: DownloadStatus;
+  playlistId?: string | null;
+  isPlaylistParent?: boolean;
+  childCount?: number | null;
+  maxHeight?: number | null;
+  maxFps?: number | null;
+}
+
+const insertStmt = db.prepare(`
+  INSERT INTO downloads (
+    id, url, title, thumbnailUrl, durationSeconds, preset, destPath, status,
+    progress, playlistId, isPlaylistParent, childCount, maxHeight, maxFps, createdAt, updatedAt
+  ) VALUES (
+    $id, $url, $title, $thumbnailUrl, $durationSeconds, $preset, $destPath, $status,
+    0, $playlistId, $isPlaylistParent, $childCount, $maxHeight, $maxFps, $now, $now
+  )
+`);
+
+export function insertJob(job: NewJob): DownloadJob {
+  const now = new Date().toISOString();
+  insertStmt.run({
+    id: job.id,
+    url: job.url,
+    title: job.title ?? null,
+    thumbnailUrl: job.thumbnailUrl ?? null,
+    durationSeconds: job.durationSeconds ?? null,
+    preset: job.preset,
+    destPath: job.destPath,
+    status: job.status,
+    playlistId: job.playlistId ?? null,
+    isPlaylistParent: job.isPlaylistParent ? 1 : 0,
+    childCount: job.childCount ?? null,
+    maxHeight: job.maxHeight ?? null,
+    maxFps: job.maxFps ?? null,
+    now,
+  });
+  return getJob(job.id)!;
+}
+
+/** Fetch the format overrides stored for a job (for the download runner). */
+export function getJobFormat(
+  id: string,
+): { maxHeight: number | null; maxFps: number | null } | null {
+  const row = getStmt.get(id) as Row | undefined;
+  if (!row) return null;
+  return { maxHeight: row.maxHeight ?? null, maxFps: row.maxFps ?? null };
+}
+
+const getStmt = db.prepare(`SELECT * FROM downloads WHERE id = ?`);
+
+export function getJob(id: string): DownloadJob | null {
+  const row = getStmt.get(id) as Row | undefined;
+  return row ? rowToJob(row) : null;
+}
+
+/** Columns callers are allowed to patch. */
+type Patch = Partial<
+  Pick<
+    Row,
+    | "title"
+    | "thumbnailUrl"
+    | "durationSeconds"
+    | "status"
+    | "progress"
+    | "outputFile"
+    | "fileSizeBytes"
+    | "errorCode"
+    | "errorMessage"
+    | "speedBytesPerSec"
+    | "etaSeconds"
+    | "childCount"
+    | "phase"
+  >
+>;
+
+export function updateJob(id: string, patch: Patch): DownloadJob | null {
+  const keys = Object.keys(patch);
+  if (keys.length === 0) return getJob(id);
+  const setSql = keys.map((k) => `${k} = $${k}`).join(", ");
+  const stmt = db.prepare(
+    `UPDATE downloads SET ${setSql}, updatedAt = $updatedAt WHERE id = $id`,
+  );
+  const params: SqlParams = { id, updatedAt: new Date().toISOString() };
+  for (const k of keys) {
+    params[k] = (patch as Record<string, SqlValue>)[k] ?? null;
+  }
+  stmt.run(params);
+  return getJob(id);
+}
+
+export interface ListFilter {
+  status?: DownloadStatus;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export function listJobs(filter: ListFilter = {}): DownloadJob[] {
+  const clauses: string[] = [
+    // Hide child jobs from the top-level history; they surface under their parent.
+    "playlistId IS NULL",
+  ];
+  const params: SqlParams = {};
+  if (filter.status) {
+    clauses.push("status = $status");
+    params.status = filter.status;
+  }
+  if (filter.search) {
+    clauses.push("(title LIKE $q OR url LIKE $q)");
+    params.q = `%${filter.search}%`;
+  }
+  params.limit = filter.limit ?? 100;
+  params.offset = filter.offset ?? 0;
+  const rows = db
+    .prepare(
+      `SELECT * FROM downloads WHERE ${clauses.join(" AND ")}
+       ORDER BY createdAt DESC LIMIT $limit OFFSET $offset`,
+    )
+    .all(params) as Row[];
+  return rows.map(rowToJob);
+}
+
+export function listChildren(parentId: string): DownloadJob[] {
+  const rows = db
+    .prepare(
+      `SELECT * FROM downloads WHERE playlistId = ? ORDER BY createdAt ASC`,
+    )
+    .all(parentId) as Row[];
+  return rows.map(rowToJob);
+}
+
+export function deleteJob(id: string): void {
+  // Remove children first if this is a parent.
+  db.prepare(`DELETE FROM downloads WHERE playlistId = ?`).run(id);
+  db.prepare(`DELETE FROM downloads WHERE id = ?`).run(id);
+}
+
+/**
+ * On boot, requeue any jobs left mid-flight by a crash/restart so they resume
+ * (yt-dlp continues partial `.part` files by default). Progress/speed/eta are
+ * reset; the actual re-enqueue is driven by the downloads-manager.
+ */
+export function reconcileOnBoot(): void {
+  db.prepare(
+    `UPDATE downloads
+     SET status = 'queued', progress = 0, speedBytesPerSec = NULL,
+         etaSeconds = NULL, phase = NULL, updatedAt = $now
+     WHERE status IN ('fetching-info','downloading','processing')`,
+  ).run({ now: new Date().toISOString() });
+}
+
+// ---------------------------------------------------------------------------
+// Settings (simple key/value store)
+// ---------------------------------------------------------------------------
+
+const getSettingStmt = db.prepare(`SELECT value FROM settings WHERE key = ?`);
+const setSettingStmt = db.prepare(
+  `INSERT INTO settings (key, value) VALUES ($key, $value)
+   ON CONFLICT(key) DO UPDATE SET value = $value`,
+);
+
+export function getSetting(key: string): string | null {
+  const row = getSettingStmt.get(key) as { value: string } | undefined;
+  return row?.value ?? null;
+}
+
+export function setSetting(key: string, value: string): void {
+  setSettingStmt.run({ key, value });
+}
+
+/** Leaf (non-parent) jobs currently queued — used to re-enqueue on boot. */
+export function listQueuedLeafJobs(): DownloadJob[] {
+  const rows = db
+    .prepare(
+      `SELECT * FROM downloads
+       WHERE status = 'queued' AND isPlaylistParent = 0
+       ORDER BY createdAt ASC`,
+    )
+    .all() as Row[];
+  return rows.map(rowToJob);
+}

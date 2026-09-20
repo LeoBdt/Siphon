@@ -1,0 +1,35 @@
+# Local/VPS deployment. The browser talks to the API directly, so set
+# NEXT_PUBLIC_API_URL to the URL the API is reachable at from the client.
+# On a VPS, put both services behind a reverse proxy (Caddy/Nginx) and set it
+# to e.g. https://dl.example.com (API) — see README "Déploiement".
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
+      MAX_CONCURRENT_DOWNLOADS: ${MAX_CONCURRENT_DOWNLOADS:-2}
+    volumes:
+      # Downloads + SQLite DB live here, outside the container.
+      - media-data:/data
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        # Baked into the client bundle at build time.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+volumes:
+  media-data:

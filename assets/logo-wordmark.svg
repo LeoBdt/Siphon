@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 48" fill="none"
+     role="img" aria-label="Siphon">
+  <g stroke="currentColor" stroke-width="3" stroke-linecap="round"
+     stroke-linejoin="round" transform="translate(6 6) scale(1.5)">
+    <path d="M6 17V9a6 6 0 0 1 12 0v10" />
+    <path d="M14.5 15.5 18 19l3.5-3.5" />
+  </g>
+  <text x="56" y="32" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif"
+        font-size="26" font-weight="600" letter-spacing="-0.5" fill="currentColor">Siphon</text>
+</svg>
