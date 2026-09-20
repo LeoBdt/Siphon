@@ -28,6 +28,8 @@ import { jobEvents } from "./lib/events.js";
 import { probeInfo, runDownload, type RunDownloadHandle } from "./lib/ytdlp.js";
 import { classifyYtdlpError } from "./lib/ytdlp-parse.js";
 import { resolveInsideRoot } from "./lib/paths.js";
+import { libraryRootFor } from "./auth/scope.js";
+import { getUser } from "./auth/store.js";
 
 /**
  * Orchestrates downloads: probes URLs, creates job rows (single or a playlist
@@ -74,7 +76,9 @@ function runJob(jobId: string): Promise<void> {
   const destDir =
     job.retention === "direct"
       ? join(config.tmpDir, "direct", job.id)
-      : resolveInsideRoot(job.destPath);
+      : // Resolved against the owner's root, so a job created by a confined
+        // member writes inside their folder however the queue later runs it.
+        resolveInsideRoot(job.destPath, libraryRootFor(job.userId));
   const fmt = getJobFormat(jobId);
   emit(
     updateJob(jobId, {
@@ -234,11 +238,13 @@ export async function createDownload(
   req: CreateDownloadRequest,
   /** Who is asking. Null only for jobs created before accounts existed. */
   userId: string | null = null,
+  /** The caller's library root — their own folder, or the whole library. */
+  libraryRoot: string = config.rootDir,
 ): Promise<DownloadJob> {
   const retention = req.retention ?? "library";
   // A direct download never lands in the library, so the destination is only
   // validated — and only meaningful — when it is being kept.
-  if (retention === "library") resolveInsideRoot(req.destPath);
+  if (retention === "library") resolveInsideRoot(req.destPath, libraryRoot);
 
   const maxHeight = req.advanced?.maxHeight ?? null;
   const maxFps = req.advanced?.maxFps ?? null;

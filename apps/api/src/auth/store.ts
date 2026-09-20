@@ -698,3 +698,11 @@ export function disableTotp(userId: string): void {
     `UPDATE users SET totpSecret = NULL, totpEnabled = 0 WHERE id = ?`,
   ).run(userId);
 }
+
+/** Folder names of members who have turned privacy on. */
+export function privateDirs(): Set<string> {
+  const rows = db
+    .prepare(`SELECT libraryDir FROM users WHERE privateFolder = 1`)
+    .all() as unknown as { libraryDir: string }[];
+  return new Set(rows.map((r) => r.libraryDir));
+}

@@ -9,6 +9,7 @@ import type {
 } from "@app/shared";
 import { config } from "../config.js";
 import { requirePermission } from "../auth/guard.js";
+import { libraryRootFor } from "../auth/scope.js";
 import {
   getJob,
   listChildren,
@@ -83,7 +84,7 @@ export async function downloadsRoutes(app: FastifyInstance) {
     const destPath = body.destPath ?? "";
     if (retention === "library") {
       try {
-        resolveInsideRoot(destPath);
+        resolveInsideRoot(destPath, libraryRootFor(req.user));
       } catch (err) {
         const code = err instanceof PathError ? err.statusCode : 400;
         return reply.code(code).send({ error: (err as Error).message });
@@ -117,6 +118,7 @@ export async function downloadsRoutes(app: FastifyInstance) {
           retention,
         },
         req.user?.id ?? null,
+        libraryRootFor(req.user),
       );
       return reply.code(201).send(job);
     } catch (err) {
