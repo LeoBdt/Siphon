@@ -95,7 +95,7 @@ export function LanguageCard() {
 
 export function ConcurrencyCard() {
   const { t, errorMessage } = useI18n();
-  const { data, isLoading } = useSettings();
+  const { data, isLoading, isError, error, refetch } = useSettings();
   const update = useUpdateSettings();
 
   function onChange(v: string | null) {
@@ -125,6 +125,17 @@ export function ConcurrencyCard() {
         <CardDescription>{t.settings.concurrency.description}</CardDescription>
       </CardHeader>
       <CardContent>
+        {isError ? (
+          // Without this the select simply sat there empty, which looks like a
+          // missing setting rather than a failed request.
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-sm text-destructive">{errorMessage(error)}</p>
+            <Button size="sm" variant="outline" onClick={() => refetch()}>
+              <RefreshCw className="size-4" />
+              {t.common.retry}
+            </Button>
+          </div>
+        ) : (
         <div className="flex items-center gap-3">
           <Select
             value={value}
@@ -146,6 +157,7 @@ export function ConcurrencyCard() {
             <Loader2 className="size-4 animate-spin text-muted-foreground" />
           )}
         </div>
+        )}
       </CardContent>
     </Card>
   );

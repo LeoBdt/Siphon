@@ -1018,8 +1018,13 @@ export function FileManager() {
         </div>
 
         {/* Selection bar — only while something is selected. */}
+        {/*
+          Only from two items up. A single click selects, like any file manager,
+          but throwing a whole action bar on screen for one file is startling —
+          and pointless, since the context menu already covers a single entry.
+        */}
         <AnimatePresence initial={false}>
-          {selection.size > 0 && (
+          {selection.size > 1 && (
             <motion.div
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: "auto", opacity: 1 }}
