@@ -20,6 +20,7 @@ import type {
   CreateDownloadRequest,
   DiskUsage,
   DownloadJob,
+  ReleaseCheck,
   ListDirResponse,
   VideoInfo,
   YtdlpInfo,
@@ -94,10 +95,11 @@ export function useJobAction() {
 export function useDeleteJob() {
   const qc = useQueryClient();
   return useMutation({
+    // Through apiFetch like everything else: a bare fetch sent no CSRF header
+    // and no credentials, which the server is entitled to refuse. It only
+    // bypassed apiFetch because a 204 used to make it throw.
     mutationFn: (id: string) =>
-      fetch(apiUrl(`/api/downloads/${id}`), { method: "DELETE" }).then((r) => {
-        if (!r.ok && r.status !== 204) throw new Error("Delete failed");
-      }),
+      apiFetch(`/api/downloads/${id}`, { method: "DELETE" }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["downloads"] }),
   });
 }
@@ -109,6 +111,14 @@ export function useDeleteJob() {
 export function useFiles(path: string) {
   return useQuery({
     queryKey: ["files", path],
+    // A directory listing is the one thing here that changes without this
+    // browser doing anything: an administrator drops a file into someone's
+    // folder, or removes one. Under the default 30-second staleTime, leaving
+    // the page and coming back served the cache, so the file appeared to
+    // linger after deletion and a new one stayed invisible. The listing is
+    // cheap, so it is refetched whenever it is looked at again.
+    staleTime: 0,
+    refetchOnWindowFocus: true,
     queryFn: () =>
       apiFetch<ListDirResponse>(
         `/api/files?path=${encodeURIComponent(path)}`,
@@ -144,10 +154,8 @@ export function useDeleteEntry() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (path: string) =>
-      fetch(apiUrl(`/api/files?path=${encodeURIComponent(path)}`), {
+      apiFetch(`/api/files?path=${encodeURIComponent(path)}`, {
         method: "DELETE",
-      }).then((r) => {
-        if (!r.ok && r.status !== 204) throw new Error("Delete failed");
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["files"] }),
   });
@@ -202,6 +210,19 @@ export function useYtdlpInfo() {
   return useQuery({
     queryKey: ["ytdlp"],
     queryFn: () => apiFetch<YtdlpInfo>("/api/system/ytdlp"),
+  });
+}
+
+/**
+ * Ask GitHub whether a newer Siphon exists.
+ *
+ * A mutation rather than a query on purpose: this is the one call that leaves
+ * the machine, so it must never fire because a page was rendered.
+ */
+export function useReleaseCheck() {
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<ReleaseCheck>("/api/system/release-check", { method: "POST" }),
   });
 }
 

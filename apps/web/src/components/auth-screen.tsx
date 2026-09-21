@@ -9,6 +9,7 @@ import { LanguageSwitcher } from "@/components/language-switcher";
 import { useI18n } from "@/components/i18n-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { DUR, EASE_OUT } from "@/lib/motion";
 
 export type AuthMode = "signIn" | "setup" | "invite";
@@ -116,10 +117,9 @@ export function AuthScreen({
 
           <label className="flex flex-col gap-1.5 text-sm font-medium">
             {t.auth.password}
-            <Input
-              type="password"
+            <PasswordInput
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={setPassword}
               autoComplete={newAccount ? "new-password" : "current-password"}
               className="h-10"
             />

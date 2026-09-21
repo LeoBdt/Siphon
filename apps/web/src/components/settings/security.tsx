@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Segmented } from "@/components/ui/segmented";
 import { useI18n } from "@/components/i18n-provider";
 import {
@@ -56,11 +57,11 @@ export function SecondFactorCard() {
             </p>
             <p className="text-xs text-muted-foreground">{s.disableHint}</p>
             <div className="flex flex-wrap gap-2">
-              <Input
-                type="password"
+              <PasswordInput
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="h-9 max-w-xs"
+                onChange={setPassword}
+                autoComplete="current-password"
+                className="h-9"
               />
               <Button
                 size="sm"

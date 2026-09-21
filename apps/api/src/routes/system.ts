@@ -1,10 +1,12 @@
 import type { FastifyInstance } from "fastify";
 import { statfs } from "node:fs/promises";
+import { createRequire } from "node:module";
 import type {
   ApiErrorBody,
   AppSettings,
   CleanupResult,
   DiskUsage,
+  ReleaseCheck,
   YtdlpInfo,
   YtdlpUpdateResult,
 } from "@app/shared";
@@ -23,6 +25,27 @@ import {
   setAutoUpdateEnabled,
 } from "../lib/ytdlp-autoupdate.js";
 import { ytdlpUpdate, ytdlpVersion } from "../lib/ytdlp-system.js";
+import { checkLatestRelease } from "../lib/release-check.js";
+import { requirePermission } from "../auth/guard.js";
+
+/**
+ * The version this build reports.
+ *
+ * Read from package.json rather than `npm_package_version`, which only exists
+ * when the process was started by a package script — it is not set in the
+ * container, where the server is launched directly, and the check would have
+ * compared every release against "0.0.0" and always claimed an update.
+ */
+const APP_VERSION = (() => {
+  try {
+    const pkg = createRequire(import.meta.url)("../../package.json") as {
+      version?: string;
+    };
+    return pkg.version ?? "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+})();
 
 export async function systemRoutes(app: FastifyInstance) {
   // Current settings.
@@ -98,6 +121,20 @@ export async function systemRoutes(app: FastifyInstance) {
     version: await ytdlpVersion(),
     lastCheckedAt: lastCheckedAt(),
   }));
+
+  /**
+   * Ask GitHub whether a newer Siphon has been released.
+   *
+   * A POST although it reads nothing: it is the one action in the app that
+   * leaves the machine, so it happens when somebody asks for it and never on
+   * a schedule or a page load. Administrators only — it is their decision to
+   * make, not a member's.
+   */
+  app.post(
+    "/api/system/release-check",
+    { preHandler: requirePermission("isAdmin") },
+    async (): Promise<ReleaseCheck> => checkLatestRelease(APP_VERSION),
+  );
 
   // Trigger a yt-dlp self-update (yt-dlp -U).
   app.post("/api/system/ytdlp/update", async (): Promise<YtdlpUpdateResult> => {

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Download, Folder, Link2, ListVideo } from "lucide-react";
+import { Download, Folder, FolderTree, Link2, ListVideo } from "lucide-react";
 import type {
   AdvancedFormat,
   QualityPresetId,
@@ -31,7 +31,7 @@ import {
   useDownloads,
   useProbe,
 } from "@/lib/hooks";
-import { Segmented } from "@/components/ui/segmented";
+import { ModeTabs } from "@/components/ui/mode-tabs";
 import { formatDuration } from "@/lib/format";
 import { DUR, EASE_OUT } from "@/lib/motion";
 import { PAGE_COLUMN, cn } from "@/lib/utils";
@@ -329,14 +329,25 @@ export default function DownloadPage() {
           {canKeep && (
             <div className="flex flex-col gap-2">
               <span className="text-sm font-medium">{t.download.retention}</span>
-              <Segmented<RetentionMode>
+              {/* Same control as the video/audio choice above it: they sit in
+                  one card and are the same kind of decision, so looking
+                  different made one of them read as a lesser setting. */}
+              <ModeTabs<RetentionMode>
                 id="retention"
                 ariaLabel={t.download.retention}
                 value={retention}
                 onChange={setRetention}
                 options={[
-                  { value: "library", label: t.download.retentionLibrary },
-                  { value: "direct", label: t.download.retentionDirect },
+                  {
+                    value: "library",
+                    label: t.download.retentionLibrary,
+                    icon: FolderTree,
+                  },
+                  {
+                    value: "direct",
+                    label: t.download.retentionDirect,
+                    icon: Download,
+                  },
                 ]}
               />
               <p className="text-xs text-muted-foreground">

@@ -30,7 +30,11 @@ export const fr: Dictionary = {
     submitSetup: "Créer le compte",
     submitInvite: "Créer mon compte",
     signOut: "Se déconnecter",
+    showPassword: "Afficher le mot de passe",
+    hidePassword: "Masquer le mot de passe",
     checking: "Vérification…",
+    privacyRevokedTitle: "Ton dossier n'est plus privé",
+    understood: "J'ai compris",
     privacyRevoked:
       "Ton dossier n'est plus privé : un administrateur a retiré la permission.",
   },
@@ -215,6 +219,23 @@ export const fr: Dictionary = {
         `${n} fichier${n > 1 ? "s" : ""} supprimé${n > 1 ? "s" : ""} · ${freed} libérés`,
     },
 
+    update: {
+      title: "Mises à jour de Siphon",
+      description:
+        "Demande à GitHub si une version plus récente existe. Rien n'est envoyé, et rien ne quitte la machine tant que tu n'as pas cliqué.",
+      installed: "Version installée",
+      check: "Vérifier les mises à jour",
+      upToDate: "Tu es sur la dernière version publiée.",
+      available: (v: string) => `La version ${v} est disponible`,
+      howTo:
+        "Récupère les nouvelles images et recrée les conteneurs sur ton serveur :",
+      releaseNotes: "Ce qui a changé",
+      noReleases: "Aucune version n'a encore été publiée.",
+      rateLimited:
+        "GitHub limite les requêtes de cette adresse. Réessaie plus tard.",
+      unreachable: "Impossible de joindre GitHub.",
+    },
+
     ytdlp: {
       title: "yt-dlp",
       description:
@@ -223,7 +244,9 @@ export const fr: Dictionary = {
       action: "Vérifier les mises à jour",
       checked: "yt-dlp vérifié",
       failed: "Mise à jour de yt-dlp échouée",
-      lastChecked: (when: string) => `Dernier contrôle ${when}`,
+      stale: "yt-dlp n'a pas été vérifié depuis longtemps. Un moteur périmé est la cause habituelle des téléchargements qui se mettent à échouer.",
+      lastCheckLabel: "Dernier contrôle",
+      lastChecked: (when: string) => when,
       neverChecked: "Jamais vérifié",
       auto: "Vérifier automatiquement",
       autoHint:
@@ -250,6 +273,9 @@ export const fr: Dictionary = {
       neverSignedIn: "Jamais connecté",
       usage: "Utilisation",
       viewHistory: "Voir l'historique",
+      copyLink: "Copier le lien",
+      permissionsAndUsage: "Permissions et utilisation",
+      copyFailed: "Copie impossible — sélectionne le lien et copie-le à la main.",
       diskUsed: "Sur le disque",
       wholeLibrary: "Bibliothèque entière",
       fileCount: "Fichiers",
@@ -398,6 +424,7 @@ export const fr: Dictionary = {
     disguiseHint: (ext: string) =>
       `Un dossier déguisé en ${ext}. Il s'ouvrira quand même comme un dossier.`,
     disguiseTooltip: "Un dossier déguisé",
+    privateFolder: "Dossier privé — masqué aux autres membres",
 
     selected: (n: number) => `${n} sélectionné${n > 1 ? "s" : ""}`,
     selectAll: "Tout sélectionner",

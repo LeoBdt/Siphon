@@ -22,6 +22,7 @@ import {
   FileText,
   FileVideo,
   Folder,
+  Lock,
   FolderPlus,
   Home,
   Loader2,
@@ -377,6 +378,17 @@ const EntryTile = memo(function EntryTile({
               <Folder className="size-3" />
             </span>
           )}
+          {node.isPrivate && (
+            // Only an administrator is ever sent this flag. It says the member
+            // asked for the folder to be kept out of other members' way — not
+            // that its contents are sealed.
+            <span
+              title={t.files.privateFolder}
+              className="absolute -right-0.5 -bottom-0.5 flex size-5 items-center justify-center rounded-full border border-background bg-muted text-foreground shadow-sm"
+            >
+              <Lock className="size-3" />
+            </span>
+          )}
           {playable && (
             <span className="absolute inset-0 flex items-center justify-center rounded-md bg-black/0 opacity-0 transition-all group-hover:bg-black/40 group-hover:opacity-100">
               <Play className="size-6 fill-white text-white" />
@@ -509,7 +521,11 @@ export function FileManager() {
   const { t, intl, errorMessage } = useI18n();
   const [path, setPath] = useState("");
   const { data, isLoading, isFetching, refetch } = useFiles(path);
-  const { data: jobs } = useDownloads();
+  // Only the viewer's own downloads become tiles. A member's `destPath` is
+  // relative to their own folder, so a job of theirs aimed at their root
+  // carries the same empty path as the administrator's library root — and
+  // surfaced there, in a folder it was never going to land in.
+  const { data: jobs } = useDownloads("mine");
   const move = useMoveEntry();
   const createFolder = useCreateFolder();
   const del = useDeleteEntry();
@@ -562,11 +578,20 @@ export function FileManager() {
     [entries, entriesByName],
   );
 
-  /** Downloads aimed at the folder on screen, newest first. */
+  /**
+   * Downloads aimed at the folder on screen, newest first.
+   *
+   * Direct downloads are left out: they are written to scratch space, handed
+   * to the browser and deleted, so they never become a file here. Showing one
+   * as an in-progress tile promised something the folder would never hold.
+   */
   const jobsHere = useMemo(
     () =>
       (jobs ?? []).filter(
-        (j) => !j.isPlaylistParent && (j.destPath ?? "") === path,
+        (j) =>
+          !j.isPlaylistParent &&
+          j.retention !== "direct" &&
+          (j.destPath ?? "") === path,
       ),
     [jobs, path],
   );

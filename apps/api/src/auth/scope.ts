@@ -39,6 +39,11 @@ export function hiddenFrom(
 ): (name: string, parentRel: string) => boolean {
   return (name, parentRel) => {
     if (!user) return false;
+    // An administrator sees every folder, private ones marked with a padlock
+    // rather than removed. Hiding them from the one account that can read the
+    // disk directly bought no privacy and cost them an accurate picture of
+    // what their own server holds.
+    if (user.effective.isAdmin) return false;
     if (parentRel !== "users") return false;
     return privateDirs.has(name) && name !== user.libraryDir;
   };

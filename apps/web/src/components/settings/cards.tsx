@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import {
+  ArrowUpCircle,
   HardDrive,
   Languages,
   Loader2,
@@ -30,15 +31,17 @@ import {
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import { useI18n } from "@/components/i18n-provider";
+import { Segmented } from "@/components/ui/segmented";
 import {
   useCleanup,
   useDiskUsage,
   useSettings,
   useUpdateSettings,
+  useReleaseCheck,
   useUpdateYtdlp,
   useYtdlpInfo,
 } from "@/lib/hooks";
-import { formatBytes } from "@/lib/format";
+import { formatBytes, formatDate } from "@/lib/format";
 
 /**
  * One card per settings concern. They live apart from the pages so a section
@@ -264,11 +267,132 @@ export function CleanupCard() {
 
 // ---------------------------------------------------------------------------
 
+/**
+ * Whether a newer Siphon has been released.
+ *
+ * Nothing happens until the button is pressed: this is the only part of the
+ * app that talks to anything outside the machine, and a self-hosted tool that
+ * promises to keep to itself should not phone home because a page was opened.
+ *
+ * There is no "update now". A container cannot replace itself, so doing it
+ * from here would mean handing the Docker socket to the web application —
+ * root on the host, in exchange for saving one command. The command is shown
+ * instead.
+ */
+export function UpdateCard() {
+  const { t, intl, errorMessage } = useI18n();
+  const check = useReleaseCheck();
+  const u = t.settings.update;
+  const result = check.data;
+
+  const message =
+    result?.error === "no_releases"
+      ? u.noReleases
+      : result?.error === "rate_limited"
+        ? u.rateLimited
+        : result?.error === "unreachable"
+          ? u.unreachable
+          : null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <ArrowUpCircle className="size-4 text-primary" />
+          {u.title}
+        </CardTitle>
+        <CardDescription>{u.description}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-sm text-muted-foreground">{u.installed}</span>
+          <span className="font-mono text-sm">
+            {process.env.NEXT_PUBLIC_APP_VERSION ?? t.common.unknown}
+          </span>
+        </div>
+
+        <div>
+          <Button
+            variant="outline"
+            disabled={check.isPending}
+            onClick={() =>
+              check.mutate(undefined, {
+                onError: (e) => toast.error(errorMessage(e)),
+              })
+            }
+          >
+            {check.isPending ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <RefreshCw className="size-4" />
+            )}
+            {u.check}
+          </Button>
+        </div>
+
+        {message && <p className="text-sm text-muted-foreground">{message}</p>}
+
+        {result && !result.error && !result.updateAvailable && (
+          <p className="text-sm text-emerald-600 dark:text-emerald-400">
+            {u.upToDate}
+          </p>
+        )}
+
+        {result?.updateAvailable && (
+          <div className="flex flex-col gap-2 rounded-lg border bg-muted/40 p-3">
+            <p className="text-sm font-medium">
+              {u.available(result.latest ?? "")}
+              {result.publishedAt && (
+                <span className="ml-2 text-xs font-normal text-muted-foreground">
+                  {formatDate(result.publishedAt, intl)}
+                </span>
+              )}
+            </p>
+            <p className="text-xs text-muted-foreground">{u.howTo}</p>
+            <code className="rounded-md bg-background px-2 py-1.5 text-xs">
+              docker compose pull &amp;&amp; docker compose up -d
+            </code>
+            {result.url && (
+              <a
+                href={result.url}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="text-xs underline underline-offset-4"
+              >
+                {u.releaseNotes}
+              </a>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+/** Beyond this, an unchecked yt-dlp is worth mentioning. */
+const YTDLP_STALE_DAYS = 14;
+
 export function YtdlpCard() {
-  const { t, errorMessage } = useI18n();
+  const { t, intl, errorMessage } = useI18n();
   const { data, isLoading } = useYtdlpInfo();
+  const settings = useSettings();
+  const saveSettings = useUpdateSettings();
   const update = useUpdateYtdlp();
   const [lastMessage, setLastMessage] = useState<string | null>(null);
+
+  // Snapshot at mount rather than Date.now() in render, which is impure and
+  // would give a different answer on every pass. A fortnight threshold does
+  // not care that the clock stopped when the page opened.
+  const [mountedAt] = useState(() => Date.now());
+  const autoOn = settings.data?.autoUpdateYtdlp ?? false;
+  const stale =
+    !autoOn &&
+    !isLoading &&
+    (!data?.lastCheckedAt ||
+      mountedAt - new Date(data.lastCheckedAt).getTime() >
+        YTDLP_STALE_DAYS * 86_400_000);
 
   function onUpdate() {
     setLastMessage(null);
@@ -297,6 +421,51 @@ export function YtdlpCard() {
             {isLoading ? "…" : (data?.version ?? t.common.unknown)}
           </span>
         </div>
+        {/* The API has always reported this; nothing rendered it, so the card
+            could not answer the one question it exists for — whether the
+            engine has been looked at recently. */}
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-sm text-muted-foreground">
+            {t.settings.ytdlp.lastCheckLabel}
+          </span>
+          <span className="text-sm">
+            {isLoading
+              ? "…"
+              : data?.lastCheckedAt
+                ? t.settings.ytdlp.lastChecked(formatDate(data.lastCheckedAt, intl))
+                : t.settings.ytdlp.neverChecked}
+          </span>
+        </div>
+        {/* The automatic check has worked since it was written, but nothing
+            rendered its switch, so there was no way to know it existed — let
+            alone turn it off. Unlike the Siphon release check, this one is
+            safe to run on a schedule: it updates the tool inside the running
+            container, and a stale yt-dlp is the single most common reason
+            downloads start failing. */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-col">
+            <span className="text-sm">{t.settings.ytdlp.auto}</span>
+            <span className="text-xs text-muted-foreground">
+              {t.settings.ytdlp.autoHint}
+            </span>
+          </div>
+          <Segmented<"on" | "off">
+            id="ytdlp-auto"
+            ariaLabel={t.settings.ytdlp.auto}
+            value={settings.data?.autoUpdateYtdlp ? "on" : "off"}
+            onChange={(next) =>
+              saveSettings.mutate(
+                { autoUpdateYtdlp: next === "on" },
+                { onError: (e) => toast.error(errorMessage(e)) },
+              )
+            }
+            options={[
+              { value: "on", label: t.settings.ytdlp.on },
+              { value: "off", label: t.settings.ytdlp.off },
+            ]}
+          />
+        </div>
+
         <div>
           <Button onClick={onUpdate} disabled={update.isPending} variant="outline">
             {update.isPending ? (
@@ -307,6 +476,17 @@ export function YtdlpCard() {
             {t.settings.ytdlp.action}
           </Button>
         </div>
+        {/* With the automatic check on there is nothing to warn about — it
+            updates rather than reports, so by the time anyone could be told,
+            it is already done. Off, nothing watches the engine at all, and a
+            stale yt-dlp fails quietly and confusingly: downloads simply stop
+            working on one site. */}
+        {stale && (
+          <p className="text-sm text-amber-700 dark:text-amber-300">
+            {t.settings.ytdlp.stale}
+          </p>
+        )}
+
         {lastMessage && (
           <pre className="max-h-40 overflow-auto rounded-lg border bg-muted/40 p-3 text-xs whitespace-pre-wrap text-muted-foreground">
             {lastMessage}

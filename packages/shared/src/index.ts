@@ -193,6 +193,16 @@ export interface FileNode {
   modifiedAt: string;
   /** For media files we can surface a thumbnail later. */
   mimeType: string | null;
+  /**
+   * A member's folder they have marked private.
+   *
+   * Only ever set on entries of the shared `users` directory, and only sent to
+   * an administrator: other members do not see the folder at all. Marking it
+   * rather than hiding it from the administrator too is deliberate — whoever
+   * runs the server reads the disk, and a padlock says what is true instead of
+   * pretending otherwise.
+   */
+  isPrivate?: boolean;
 }
 
 export interface ListDirResponse {
@@ -269,6 +279,31 @@ export interface YtdlpInfo {
   version: string | null;
   /** ISO date of the last check, automatic or manual. Null if never checked. */
   lastCheckedAt: string | null;
+}
+
+/**
+ * Whether a newer Siphon has been released.
+ *
+ * Only ever produced by an explicit request: checking contacts GitHub, and an
+ * app that promises to keep to itself should not reach out on a timer without
+ * being asked. Nothing is sent but the request itself.
+ */
+export interface ReleaseCheck {
+  /** The version this instance is running. */
+  current: string;
+  /** Latest published release tag, or null when none exists yet. */
+  latest: string | null;
+  /** True only when `latest` is strictly newer than `current`. */
+  updateAvailable: boolean;
+  /** Where to read what changed. */
+  url: string | null;
+  publishedAt: string | null;
+  /**
+   * The check could not be made — no network, GitHub rate-limiting, no
+   * releases yet. Reported rather than thrown so the card can say what
+   * happened instead of showing a generic failure.
+   */
+  error: "unreachable" | "rate_limited" | "no_releases" | null;
 }
 
 /** Result of triggering a yt-dlp self-update. */

@@ -86,11 +86,27 @@ export async function filesRoutes(app: FastifyInstance) {
       // Hide yt-dlp's work-in-progress artifacts: a half-written .part or an
       // un-merged .f401.mp4 is not a file the user owns, and showing them makes
       // the library look corrupted mid-download.
-      const hidden = hiddenFrom(req.user, privateDirs());
+      const priv = privateDirs();
+      const hidden = hiddenFrom(req.user, priv);
+      const parentRel = normalizeRel(rel);
       const names = (await readdir(abs)).filter(
-        (n) => !isTempArtifact(n) && !hidden(n, normalizeRel(rel)),
+        (n) => !isTempArtifact(n) && !hidden(n, parentRel),
       );
-      const entries = await Promise.all(names.map((n) => toNode(abs, n, base)));
+      const entries = await Promise.all(
+        names.map(async (n) => {
+          const node = await toNode(abs, n, base);
+          // Only an administrator is ever shown a private folder, so the flag
+          // only ever reaches the one account entitled to it.
+          if (
+            req.user?.effective.isAdmin &&
+            parentRel === "users" &&
+            priv.has(n)
+          ) {
+            node.isPrivate = true;
+          }
+          return node;
+        }),
+      );
       entries.sort((a, b) => {
         if (a.type !== b.type) return a.type === "directory" ? -1 : 1;
         return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });

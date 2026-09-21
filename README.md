@@ -122,16 +122,19 @@ they are scoped to one, the library root otherwise. Absolute paths, `..`
 traversal and symlink escapes are rejected, and that behaviour is covered by
 tests.
 
-Passwords are hashed with scrypt and never stored or transmitted in the clear by
-the application. Sessions live in the database and are revoked on sign-out, on
-suspension, and when an account locks itself after repeated failures. Requests
-that change state carry a CSRF token. Members see only their own downloads,
-enforced on the server rather than filtered in the browser.
+Passwords are hashed with scrypt and never written to the database, the logs or
+an API response in their original form. Sessions live in the database and are
+revoked on sign-out, on suspension, and when an account locks itself after
+repeated failures. Requests that change state carry a CSRF token. Members see
+only their own downloads, enforced on the server rather than filtered in the
+browser.
 
-**Siphon does not terminate TLS.** On a public deployment, put it behind a
-reverse proxy that does — otherwise passwords and session cookies cross the
-network in the clear. Passkeys are not supported yet; they require a domain and
-a secure context.
+**Siphon does not terminate TLS.** Over plain HTTP, passwords and session
+cookies are readable on the network — a LAN included. Put it behind a reverse
+proxy that terminates TLS, or reach it over a VPN such as Tailscale or
+WireGuard.
+
+Passkeys are not supported yet; they require a domain and a secure context.
 
 ## Running from source
 

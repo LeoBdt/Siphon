@@ -128,5 +128,13 @@ export async function apiFetch<T>(
   if (!res.ok) {
     throw await toApiError(res);
   }
+  // A 204 carries no body, and `res.json()` on an empty one throws — which
+  // made every successful delete look like a failure: the row was gone on the
+  // server, the interface showed an error and never refreshed. Deleting a
+  // member, revoking an invitation, removing a job and deleting a file all
+  // answer 204.
+  if (res.status === 204 || res.headers.get("content-length") === "0") {
+    return undefined as T;
+  }
   return res.json() as Promise<T>;
 }

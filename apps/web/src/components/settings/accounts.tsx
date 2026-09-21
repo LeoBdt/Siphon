@@ -3,6 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import {
+  ChevronDown,
+  Copy,
   HardDrive,
   History,
   Link2,
@@ -11,6 +13,7 @@ import {
   LockOpen,
   Plus,
   ScrollText,
+  SlidersHorizontal,
   Trash2,
   UserRound,
   Users,
@@ -338,8 +341,23 @@ function MemberRow({
             </Button>
           )}
 
-          <Button size="sm" variant="ghost" onClick={() => setOpen((o) => !o)}>
-            {open ? "–" : "+"}
+          {/* A "+" said nothing about what it opens, and read as "add
+              something". The panel holds permissions and usage, so the button
+              says so and turns to face the panel it controls. */}
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setOpen((o) => !o)}
+            aria-expanded={open}
+          >
+            <SlidersHorizontal className="size-4" />
+            {a.permissionsAndUsage}
+            <ChevronDown
+              className={cn(
+                "size-4 transition-transform duration-200",
+                open && "rotate-180",
+              )}
+            />
           </Button>
 
           {!isSelf && (
@@ -529,19 +547,27 @@ export function InvitesCard() {
   const revoke = useRevokeInvite();
   const [groupId, setGroupId] = useState("member");
 
-  async function invite() {
+  // Built here, not on the server: the address the administrator is reaching
+  // the app on is the only one known to work, and the server cannot see the
+  // public host a proxy put in front of it.
+  const linkFor = (token: string) =>
+    typeof window === "undefined" ? "" : `${window.location.origin}/invite/${token}`;
+
+  async function copyLink(token: string) {
+    try {
+      await navigator.clipboard.writeText(linkFor(token));
+      toast.success(t.settings.accounts.inviteCopied);
+    } catch {
+      // Clipboard access needs a secure context, so it fails over plain HTTP —
+      // exactly where a self-hosted instance often lives. The link is on
+      // screen and selectable, so there is something to fall back to.
+      toast.error(t.settings.accounts.copyFailed);
+    }
+  }
+
+  function invite() {
     create.mutate(groupId, {
-      onSuccess: async (created) => {
-        // Built here, not on the server: the address the admin is using is the
-        // only one known to work, and the server cannot see its public host.
-        const link = `${window.location.origin}/invite/${created.token}`;
-        try {
-          await navigator.clipboard.writeText(link);
-          toast.success(t.settings.accounts.inviteCopied);
-        } catch {
-          toast.message(link);
-        }
-      },
+      onSuccess: (created) => void copyLink(created.token),
       onError: (e) => toast.error(errorMessage(e)),
     });
   }
@@ -581,27 +607,55 @@ export function InvitesCard() {
           </Button>
         </div>
 
+        {/*
+          The link lives in the row, not only in the toast it was created
+          with. An invitation is something you come back to — to send it again,
+          or to check what is still outstanding — and a message that disappears
+          after four seconds is no place to keep the only copy.
+        */}
         {invites?.map((inv) => (
           <div
             key={inv.token}
-            className="flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-sm"
+            className="flex flex-col gap-2 rounded-lg border px-3 py-2 text-sm"
           >
-            <span className="font-medium">{inv.groupName}</span>
-            <span className="text-xs text-muted-foreground">
-              {t.settings.accounts.inviteExpires(formatDate(inv.expiresAt, intl))}
-            </span>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="ml-auto text-destructive hover:text-destructive"
-              onClick={() =>
-                revoke.mutate(inv.token, {
-                  onError: (e) => toast.error(errorMessage(e)),
-                })
-              }
-            >
-              {t.settings.accounts.revoke}
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-medium">{inv.groupName}</span>
+              <span className="text-xs text-muted-foreground">
+                {t.settings.accounts.inviteExpires(
+                  formatDate(inv.expiresAt, intl),
+                )}
+              </span>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="ml-auto text-destructive hover:text-destructive"
+                disabled={revoke.isPending}
+                onClick={() =>
+                  revoke.mutate(inv.token, {
+                    onError: (e) => toast.error(errorMessage(e)),
+                  })
+                }
+              >
+                <Trash2 className="size-4" />
+                {t.settings.accounts.revoke}
+              </Button>
+            </div>
+            <div className="flex items-center gap-2">
+              <code
+                className="flex-1 truncate rounded-md bg-muted px-2 py-1 text-xs"
+                title={linkFor(inv.token)}
+              >
+                {linkFor(inv.token)}
+              </code>
+              <Button
+                size="icon-sm"
+                variant="outline"
+                title={t.settings.accounts.copyLink}
+                onClick={() => void copyLink(inv.token)}
+              >
+                <Copy className="size-4" />
+              </Button>
+            </div>
           </div>
         ))}
       </CardContent>

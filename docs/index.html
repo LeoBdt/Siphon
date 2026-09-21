@@ -275,6 +275,31 @@
         gap: 1.25rem;
         grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
       }
+      /*
+        A heading inside a section, splitting one long grid in two.
+
+        Eight cards in a row read as a pile rather than a list; grouping them by
+        who the feature is for gives the eye somewhere to stop. Quieter than an
+        h2 on purpose — these are parts of one section, not two sections.
+      */
+      .group {
+        margin: 0 0 1.25rem;
+        font-size: 0.95rem;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+      /* Space before the next group only — the last grid already has the
+         section's own padding below it. */
+      .grid + .group {
+        margin-top: 3rem;
+      }
+      .group span {
+        display: block;
+        margin-top: 0.15rem;
+        font-weight: 400;
+        font-size: 0.9rem;
+        color: var(--muted);
+      }
       .card {
         padding: 1.75rem;
         border: 1px solid var(--border);
@@ -525,7 +550,7 @@
         <p class="lede">
           A web interface for <code>yt-dlp</code> that you host yourself. Paste a
           URL, choose a quality, and watch it arrive in a library you actually
-          browse. Nothing leaves your machine.
+          browse. Your files never leave your machine.
         </p>
 
         <div class="cta">
@@ -542,6 +567,11 @@
         <p class="section-lede">
           Not a form around a command line — the whole loop, from pasting a link
           to finding the file again three weeks later.
+        </p>
+
+        <p class="group">
+          For whoever is downloading
+          <span>Paste a link, get the file, find it again later.</span>
         </p>
 
         <div class="grid">
@@ -590,6 +620,14 @@
             </p>
           </article>
 
+        </div>
+
+        <p class="group">
+          For whoever runs the server
+          <span>Hand it to other people without handing over the machine.</span>
+        </p>
+
+        <div class="grid">
           <article class="card">
             <h3>Accounts and permissions</h3>
             <p>

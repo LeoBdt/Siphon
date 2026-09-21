@@ -32,7 +32,11 @@ export const en = {
     submitSetup: "Create account",
     submitInvite: "Create my account",
     signOut: "Sign out",
+    showPassword: "Show password",
+    hidePassword: "Hide password",
     checking: "Checking…",
+    privacyRevokedTitle: "Your folder is no longer private",
+    understood: "Understood",
     privacyRevoked:
       "Your folder is no longer private: an administrator withdrew the permission.",
   },
@@ -215,6 +219,21 @@ export const en = {
         `${n} file${n > 1 ? "s" : ""} deleted · ${freed} freed`,
     },
 
+    update: {
+      title: "Siphon updates",
+      description:
+        "Asks GitHub whether a newer release exists. Nothing is sent, and nothing leaves the machine until you press the button.",
+      installed: "Installed version",
+      check: "Check for updates",
+      upToDate: "You are running the latest release.",
+      available: (v: string) => `Version ${v} is available`,
+      howTo: "Pull the new images and recreate the containers on your host:",
+      releaseNotes: "What changed",
+      noReleases: "No release has been published yet.",
+      rateLimited: "GitHub is rate-limiting this address. Try again later.",
+      unreachable: "Could not reach GitHub.",
+    },
+
     ytdlp: {
       title: "yt-dlp",
       description:
@@ -223,7 +242,9 @@ export const en = {
       action: "Check for updates",
       checked: "yt-dlp checked",
       failed: "yt-dlp update failed",
-      lastChecked: (when: string) => `Last checked ${when}`,
+      stale: "yt-dlp has not been checked in a while. An outdated engine is the usual reason downloads start failing.",
+      lastCheckLabel: "Last check",
+      lastChecked: (when: string) => when,
       neverChecked: "Never checked",
       auto: "Check automatically",
       autoHint: "On start, then once a day. Updates apply immediately.",
@@ -249,6 +270,10 @@ export const en = {
       neverSignedIn: "Never signed in",
       usage: "Usage",
       viewHistory: "View history",
+      copyLink: "Copy link",
+      permissionsAndUsage: "Permissions and usage",
+      copyFailed: "Could not copy — select the link and copy it by hand.",
+
       diskUsed: "On disk",
       wholeLibrary: "Whole library",
       fileCount: "Files",
@@ -399,6 +424,7 @@ export const en = {
     disguiseHint: (ext: string) =>
       `A folder in a ${ext} costume. It will still open like a folder.`,
     disguiseTooltip: "A folder in a costume",
+    privateFolder: "Private folder — kept out of other members' way",
 
     selected: (n: number) => `${n} selected`,
     selectAll: "Select all",

@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
-import { toast } from "sonner";
+import type { ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 import { AuthScreen } from "@/components/auth-screen";
 import { ApiError } from "@/lib/api";
 import { useI18n } from "@/components/i18n-provider";
-import { useAuthState, useDismissNotice, useLogin, useSetup } from "@/lib/hooks";
+import { NoticeDialog } from "@/components/notice-dialog";
+import { useAuthState, useLogin, useSetup } from "@/lib/hooks";
 
 /**
  * Nothing is reachable before this resolves: the app either needs its first
@@ -20,17 +20,6 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const { data, isPending } = useAuthState();
   const login = useLogin();
   const setup = useSetup();
-  const dismiss = useDismissNotice();
-
-  // A folder that silently stopped being private deserves to be said out loud.
-  const notice = data?.notice;
-  useEffect(() => {
-    if (!notice) return;
-    if (notice === "privacy_revoked") toast.warning(t.auth.privacyRevoked);
-    dismiss.mutate();
-    // `dismiss` is stable enough here; re-running on it would loop.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [notice]);
 
   if (isPending) {
     return (
@@ -70,5 +59,13 @@ export function AuthGate({ children }: { children: ReactNode }) {
     );
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      {/* Rendered inside the app rather than over the sign-in screen: the
+          notice is about this account's folder, so it belongs where the person
+          can act on it. */}
+      <NoticeDialog notice={data.notice ?? null} />
+      {children}
+    </>
+  );
 }

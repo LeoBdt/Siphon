@@ -11,6 +11,7 @@ import {
 import { cn } from "@/lib/utils";
 import { EASE_OUT } from "@/lib/motion";
 import { useT } from "@/components/i18n-provider";
+import { ModeTabs } from "@/components/ui/mode-tabs";
 import {
   Select,
   SelectContent,
@@ -84,22 +85,16 @@ export function QualitySelector({
   return (
     <div className="flex flex-col gap-3">
       {/* Mode — the two are exclusive: a video download always embeds its audio. */}
-      <div className="grid grid-cols-2 gap-1 rounded-xl border bg-muted/40 p-1">
-        <ModeTab
-          active={mode === "video"}
-          mode={mode}
-          icon={Video}
-          label={t.quality.modeVideo}
-          onClick={() => setMode("video")}
-        />
-        <ModeTab
-          active={mode === "audio"}
-          mode={mode}
-          icon={Music}
-          label={t.quality.modeAudio}
-          onClick={() => setMode("audio")}
-        />
-      </div>
+      <ModeTabs<"video" | "audio">
+        id="quality-mode"
+        value={mode}
+        onChange={setMode}
+        ariaLabel={t.quality.modeVideo}
+        options={[
+          { value: "video", label: t.quality.modeVideo, icon: Video },
+          { value: "audio", label: t.quality.modeAudio, icon: Music },
+        ]}
+      />
 
       {/* Presets of the active mode */}
       <div className="flex flex-wrap gap-1.5">
@@ -205,47 +200,6 @@ export function QualitySelector({
         </div>
       )}
     </div>
-  );
-}
-
-function ModeTab({
-  active,
-  mode,
-  icon: Icon,
-  label,
-  onClick,
-}: {
-  active: boolean;
-  mode: "video" | "audio";
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        "relative flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors duration-150 ease-out",
-        active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
-      )}
-    >
-      {active && (
-        <motion.span
-          layoutId="quality-mode-tab"
-          // Without this, the shared indicator re-measures whenever anything
-          // above it resizes (the URL preview opening) and slides for no
-          // reason. Pinning it to `mode` means it only animates on a real
-          // selection change.
-          layoutDependency={mode}
-          transition={{ duration: 0.22, ease: EASE_OUT }}
-          className="absolute inset-0 rounded-lg border bg-background shadow-sm"
-        />
-      )}
-      <Icon className="relative size-3.5" />
-      <span className="relative">{label}</span>
-    </button>
   );
 }
 
