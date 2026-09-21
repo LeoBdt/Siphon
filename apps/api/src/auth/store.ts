@@ -7,7 +7,7 @@ import type {
   PermissionOverrides,
   User,
 } from "@app/shared";
-import { GROUP_ADMIN_ID, GROUP_MEMBER_ID } from "@app/shared";
+import { GROUP_ADMIN_ID, GROUP_MEMBER_ID, MAX_INVITE_USES } from "@app/shared";
 import { db } from "../db.js";
 import { hashPassword } from "./password.js";
 
@@ -72,6 +72,35 @@ db.exec(`
   );
 `);
 
+// Lightweight migrations: columns added after the initial schema. Same pattern
+// as db.ts — an existing instance must keep its accounts across an upgrade.
+for (const [table, column] of [
+  ["users", "displayName TEXT"],
+  // Who the invitation is for, as the administrator wrote it.
+  ["invites", "label TEXT"],
+  // Who sent it. The id resolves to a current name when the link is opened;
+  // the name is only a fallback for when that account is gone.
+  ["invites", "createdById TEXT"],
+  ["invites", "createdByName TEXT"],
+  // One link for several people, so inviting ten does not mean ten links.
+  ["invites", "maxUses INTEGER NOT NULL DEFAULT 1"],
+  ["invites", "usedCount INTEGER NOT NULL DEFAULT 0"],
+] as const) {
+  try {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column}`);
+  } catch {
+    /* column already exists */
+  }
+}
+
+// An invitation from before the counter existed recorded its single use as a
+// date. Carry that forward, or every spent link would come back usable.
+try {
+  db.exec(`UPDATE invites SET usedCount = 1 WHERE usedAt IS NOT NULL AND usedCount = 0`);
+} catch {
+  /* nothing to carry forward */
+}
+
 // ---------------------------------------------------------------------------
 // Permissions
 // ---------------------------------------------------------------------------
@@ -82,11 +111,13 @@ const NONE: Permissions = {
   canKeepInLibrary: false,
   canManageFiles: false,
   canManageSettings: false,
+  canManageEngine: false,
   isAdmin: false,
   canHavePrivateFolder: false,
   canBrowseWholeLibrary: false,
   maxConcurrentDownloads: null,
   quotaBytes: null,
+  maxFileSizeBytes: null,
 };
 
 const ADMIN: Permissions = {
@@ -94,11 +125,13 @@ const ADMIN: Permissions = {
   canKeepInLibrary: true,
   canManageFiles: true,
   canManageSettings: true,
+  canManageEngine: true,
   isAdmin: true,
   canHavePrivateFolder: true,
   canBrowseWholeLibrary: true,
   maxConcurrentDownloads: null,
   quotaBytes: null,
+  maxFileSizeBytes: null,
 };
 
 /** What an ordinary member may do out of the box: download and keep, nothing more. */
@@ -234,6 +267,7 @@ export function deleteGroup(id: string): boolean {
 interface UserRow {
   id: string;
   username: string;
+  displayName: string | null;
   passwordHash: string;
   groupId: string;
   overrides: string;
@@ -273,6 +307,9 @@ function toUser(row: UserRow): User {
   return {
     id: row.id,
     username: row.username,
+    // Empty strings are not names: a cleared field means "no name", so the
+    // interface falls back once rather than printing a blank.
+    displayName: row.displayName?.trim() || null,
     groupId: group.id,
     groupName: group.name,
     overrides,
@@ -319,15 +356,17 @@ export async function createUser(opts: {
   username: string;
   password: string;
   groupId: string;
+  displayName?: string | null;
   overrides?: Partial<PermissionOverrides>;
 }): Promise<User> {
   const id = randomUUID();
   db.prepare(
-    `INSERT INTO users (id, username, passwordHash, groupId, overrides, libraryDir, createdAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO users (id, username, displayName, passwordHash, groupId, overrides, libraryDir, createdAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     id,
     opts.username,
+    opts.displayName?.trim() || null,
     await hashPassword(opts.password),
     opts.groupId,
     JSON.stringify(opts.overrides ?? {}),
@@ -337,10 +376,24 @@ export async function createUser(opts: {
   return getUser(id)!;
 }
 
+/**
+ * A member's own profile. Separate from updateUser, which is the
+ * administrator's tool: this one can only touch what is nobody else's
+ * business, and takes no group or permissions.
+ */
+export function setDisplayName(id: string, displayName: string | null): User | null {
+  db.prepare(`UPDATE users SET displayName = ? WHERE id = ?`).run(
+    displayName?.trim() || null,
+    id,
+  );
+  return getUser(id);
+}
+
 export async function updateUser(
   id: string,
   patch: {
     username?: string;
+    displayName?: string | null;
     password?: string;
     groupId?: string;
     overrides?: Partial<PermissionOverrides>;
@@ -349,6 +402,9 @@ export async function updateUser(
   const current = getUser(id);
   if (!current) return null;
 
+  if (patch.displayName !== undefined) {
+    setDisplayName(id, patch.displayName);
+  }
   if (patch.username) {
     db.prepare(`UPDATE users SET username = ? WHERE id = ?`).run(
       patch.username,
@@ -516,45 +572,98 @@ export function hiddenDirsFor(viewer: User): Set<string> {
 // ---------------------------------------------------------------------------
 
 const INVITE_DAYS = 7;
+/** Ceiling on a single link's uses, so a typo cannot open the instance wide. */
+
 
 interface InviteRow {
   token: string;
   groupId: string;
+  label: string | null;
+  createdById: string | null;
+  createdByName: string | null;
+  maxUses: number;
+  usedCount: number;
   createdAt: string;
   expiresAt: string;
   usedAt: string | null;
 }
 
-export function createInvite(groupId: string): Invite {
-  const token = randomBytes(24).toString("base64url");
-  const now = new Date();
-  const expiresAt = new Date(now.getTime() + INVITE_DAYS * 86_400_000);
-  db.prepare(
-    `INSERT INTO invites (token, groupId, createdAt, expiresAt) VALUES (?, ?, ?, ?)`,
-  ).run(token, groupId, now.toISOString(), expiresAt.toISOString());
-  return {
-    token,
-    groupId,
-    groupName: getGroup(groupId)?.name ?? groupId,
-    createdAt: now.toISOString(),
-    expiresAt: expiresAt.toISOString(),
-  };
+/**
+ * Who sent an invitation, as it should read today.
+ *
+ * Resolved from the id every time rather than read from the frozen copy: an
+ * administrator who sets their name after sending a batch of links fixes all
+ * of them at once. The stored name is the fallback for an account that no
+ * longer exists — and a username is never used here, because this ends up in
+ * a sentence addressed to a person.
+ */
+function inviterName(row: Pick<InviteRow, "createdById" | "createdByName">): string | null {
+  const current = row.createdById ? getUser(row.createdById) : null;
+  if (current) return current.displayName;
+  return row.createdByName?.trim() || null;
 }
 
-/** Invitations still worth showing: unused and unexpired. */
-export function listInvites(): Invite[] {
-  const rows = db
-    .prepare(
-      `SELECT * FROM invites WHERE usedAt IS NULL AND expiresAt > ? ORDER BY createdAt DESC`,
-    )
-    .all(new Date().toISOString()) as unknown as InviteRow[];
-  return rows.map((r) => ({
+function toInvite(r: InviteRow): Invite {
+  return {
     token: r.token,
     groupId: r.groupId,
     groupName: getGroup(r.groupId)?.name ?? r.groupId,
+    label: r.label?.trim() || null,
+    maxUses: r.maxUses,
+    usedCount: r.usedCount,
+    invitedBy: inviterName(r),
     createdAt: r.createdAt,
     expiresAt: r.expiresAt,
-  }));
+    lastUsedAt: r.usedAt,
+  };
+}
+
+export function createInvite(opts: {
+  groupId: string;
+  label?: string | null;
+  maxUses?: number;
+  createdBy?: User | null;
+}): Invite {
+  const token = randomBytes(24).toString("base64url");
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + INVITE_DAYS * 86_400_000);
+  // At least one use, and a ceiling so a typo cannot open an instance to a
+  // thousand accounts.
+  const maxUses = Math.max(1, Math.min(MAX_INVITE_USES, Math.floor(opts.maxUses ?? 1)));
+  db.prepare(
+    `INSERT INTO invites
+       (token, groupId, label, createdById, createdByName, maxUses, usedCount, createdAt, expiresAt)
+     VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+  ).run(
+    token,
+    opts.groupId,
+    opts.label?.trim() || null,
+    opts.createdBy?.id ?? null,
+    opts.createdBy?.displayName ?? null,
+    maxUses,
+    now.toISOString(),
+    expiresAt.toISOString(),
+  );
+  return getInvite(token)!;
+}
+
+export function getInvite(token: string): Invite | null {
+  const row = db.prepare(`SELECT * FROM invites WHERE token = ?`).get(token) as
+    | unknown as InviteRow
+    | undefined;
+  return row ? toInvite(row) : null;
+}
+
+/** Invitations still worth showing: with uses left, and unexpired. */
+export function listInvites(): Invite[] {
+  const rows = db
+    .prepare(
+      `SELECT * FROM invites
+       WHERE usedCount < maxUses AND expiresAt > ?
+       ORDER BY createdAt DESC`,
+    )
+    .all(new Date().toISOString()) as unknown as InviteRow[];
+  return rows.map(toInvite);
 }
 
 export function revokeInvite(token: string): boolean {
@@ -565,7 +674,7 @@ function usableInvite(token: string): InviteRow | null {
   const row = db.prepare(`SELECT * FROM invites WHERE token = ?`).get(token) as
     | unknown as InviteRow
     | undefined;
-  if (!row || row.usedAt) return null;
+  if (!row || row.usedCount >= row.maxUses) return null;
   if (new Date(row.expiresAt).getTime() < Date.now()) return null;
   return row;
 }
@@ -573,8 +682,16 @@ function usableInvite(token: string): InviteRow | null {
 export function previewInvite(token: string): InvitePreview {
   const row = usableInvite(token);
   return row
-    ? { valid: true, groupName: getGroup(row.groupId)?.name ?? null }
-    : { valid: false, groupName: null };
+    ? {
+        valid: true,
+        groupName: getGroup(row.groupId)?.name ?? null,
+        // A link with several uses is addressed to nobody, so it carries no
+        // name to greet — whatever was typed when it was made is a note for
+        // the administrator's own list, not for the people who open it.
+        label: row.maxUses === 1 ? (row.label?.trim() || null) : null,
+        invitedBy: inviterName(row),
+      }
+    : { valid: false, groupName: null, label: null, invitedBy: null };
 }
 
 /** Accept an invitation, creating the account the invitee named themselves. */
@@ -582,20 +699,23 @@ export async function acceptInvite(
   token: string,
   username: string,
   password: string,
+  displayName?: string | null,
 ): Promise<User | null> {
   const row = usableInvite(token);
   if (!row) return null;
   const user = await createUser({
     username,
     password,
+    // A single-use invitation was addressed to someone by name; that is a
+    // sensible starting point for their profile, and they can change it.
+    displayName: displayName ?? (row.maxUses === 1 ? row.label : null),
     groupId: row.groupId,
   });
-  // Single use: marked spent only once the account exists, so a failed
-  // signup — a taken username, say — leaves the link usable.
-  db.prepare(`UPDATE invites SET usedAt = ? WHERE token = ?`).run(
-    new Date().toISOString(),
-    token,
-  );
+  // Counted only once the account exists, so a failed signup — a taken
+  // username, say — does not spend a use.
+  db.prepare(
+    `UPDATE invites SET usedCount = usedCount + 1, usedAt = ? WHERE token = ?`,
+  ).run(new Date().toISOString(), token);
   return user;
 }
 

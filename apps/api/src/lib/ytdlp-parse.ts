@@ -32,6 +32,16 @@ export interface ParsedProgress {
   speedBytesPerSec: number | null;
   etaSeconds: number | null;
   phase: DownloadPhase;
+  /** Bytes written so far for the current stream. */
+  downloadedBytes: number | null;
+  /**
+   * What the current stream will weigh, measured or estimated by yt-dlp.
+   *
+   * Reported rather than folded into `progress` because it is the only
+   * trustworthy size there is while a download runs: a per-account size limit
+   * is enforced against this, not against the guess made before starting.
+   */
+  totalBytes: number | null;
 }
 
 /**
@@ -53,6 +63,8 @@ export function parseProgressLine(line: string): ParsedProgress | null {
     speedBytesPerSec: num(speed ?? ""),
     etaSeconds: num(eta ?? ""),
     phase: phaseFromCodecs(vcodec ?? "", acodec ?? ""),
+    downloadedBytes: downloaded,
+    totalBytes,
   };
 }
 

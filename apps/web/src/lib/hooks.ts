@@ -308,6 +308,7 @@ export function useGroups() {
 
 interface UserPayload {
   username?: string;
+  displayName?: string | null;
   password?: string;
   groupId?: string;
   overrides?: Partial<PermissionOverrides>;
@@ -378,12 +379,30 @@ export function useInvites() {
 export function useCreateInvite() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (groupId: string) =>
+    mutationFn: (body: { groupId: string; label?: string; maxUses?: number }) =>
       apiFetch<Invite>("/api/admin/invites", {
         method: "POST",
-        body: JSON.stringify({ groupId }),
+        body: JSON.stringify(body),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["invites"] }),
+  });
+}
+
+/** One's own profile. Nothing here touches permissions or anyone else. */
+export function useUpdateProfile() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (displayName: string | null) =>
+      apiFetch<User>("/api/auth/profile", {
+        method: "PATCH",
+        body: JSON.stringify({ displayName }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["auth"] });
+      // The name appears beside jobs and in the members list, both of which
+      // are cached under their own keys.
+      qc.invalidateQueries({ queryKey: ["users"] });
+    },
   });
 }
 

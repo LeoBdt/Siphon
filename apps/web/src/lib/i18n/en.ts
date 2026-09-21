@@ -23,7 +23,17 @@ export const en = {
     inviteTitle: "Join this instance",
     inviteSubtitle: (group: string) => `You have been invited as ${group}.`,
     inviteInvalid: "This invitation has expired or has already been used.",
+    // Two greetings, because an invitation may be addressed to someone or to
+    // whoever holds the link, and may or may not know who sent it. A username
+    // is never used here: "admin invites you" reads like a machine wrote it.
+    invitedByNamed: (who: string, by: string) => `${who}, ${by} invites you to Siphon`,
+    invitedBy: (by: string) => `${by} invites you to Siphon`,
+    invitedNamed: (who: string) => `${who}, you are invited to Siphon`,
     username: "Username",
+    displayName: "Your name",
+    displayNamePlaceholder: "e.g. Alex",
+    displayNameHint:
+      "Shown to the others beside your downloads. Optional, and changeable later.",
     code: "Authentication code",
     codeHint: "The six digits from your authenticator app.",
     password: "Password",
@@ -84,6 +94,17 @@ export const en = {
     cannotKeepHint:
       "Your account cannot keep files in the library. This download will be handed to your browser once it is ready, then removed from the server.",
     save: "Save file",
+    tooLarge: {
+      // The estimate is a guess most of the time, so the wording says so and
+      // the choice is left to the person â the server stops it for real if it
+      // turns out to exceed.
+      warn: (size: string, limit: string) =>
+        `This looks like about ${size}, over your ${limit} limit. It will be stopped if it really is.`,
+      refused: (size: string, limit: string) =>
+        `This is ${size}, over your ${limit} limit.`,
+      quota: (limit: string) => `This would go over your ${limit} quota.`,
+      anyway: "Download anyway",
+    },
     submitMany: (n: number) => `Download (${n})`,
     started: "Download started",
     startedMany: (n: number) => `${n} downloads started`,
@@ -187,12 +208,33 @@ export const en = {
     title: "Settings",
     subtitle: "Downloads, storage and yt-dlp maintenance.",
 
+    // Grouped by who they concern: yours, and the server's.
+    groups: {
+      mine: "My account",
+      instance: "Instance",
+    },
     sections: {
-      general: "General",
+      profile: "Profile",
+      security: "Security",
+      appearance: "Appearance",
       downloads: "Downloads",
       storage: "Storage",
       engine: "Engine",
-      accounts: "Accounts",
+      users: "Users",
+    },
+
+    profile: {
+      title: "Profile",
+      description:
+        "Your name is what other people see beside your downloads and on the invitations you send. Your username stays what you sign in with.",
+      displayName: "Display name",
+      displayNamePlaceholder: "e.g. Alex",
+      displayNameHint:
+        "Leave it empty and nothing is shown in your place — never your username.",
+      username: "Username",
+      usernameHint: "Chosen when the account was created. Only an administrator can change it.",
+      save: "Save",
+      saved: "Profile updated",
     },
 
     concurrency: {
@@ -262,27 +304,136 @@ export const en = {
       off: "Off",
     },
 
-    accounts: {
-      title: "Accounts",
-      members: "Members",
-      membersHint: "People with access to this instance.",
-      groups: "Groups",
-      groupsHint:
-        "A group sets the defaults. Anything set on a member overrides them.",
-      invite: "Invite someone",
-      inviteHint:
-        "The link carries the address you are using right now — open Siphon on the address you want to share before creating one.",
-      inviteCopied: "Invitation link copied",
-      inviteExpires: (when: string) => `Expires ${when}`,
-      revoke: "Revoke",
+    users: {
+      title: "Users",
+      tabs: {
+        users: "Users",
+        groups: "Groups",
+        invites: "Invitations",
+        audit: "Activity",
+      },
+      search: "Search by name, username or group",
+      filterGroup: "All groups",
+      filterStatus: "Any status",
+      status: {
+        active: "Active",
+        suspended: "Suspended",
+        locked: "Locked",
+        admins: "Administrators",
+      },
+      count: (shown: number, total: number) =>
+        shown === total
+          ? `${total} user${total > 1 ? "s" : ""}`
+          : `${shown} of ${total}`,
+      empty: "No account yet. Invite someone to get started.",
+      noResults: "No user matches that.",
+      manage: "Manage",
       you: "you",
+      noName: "No name set",
       lastSeen: (when: string) => `Last seen ${when}`,
       neverSignedIn: "Never signed in",
-      usage: "Usage",
+      suspended: "Suspended",
+      lockedBySystem: (when: string) =>
+        `Locked by the system until ${when} — too many failed sign-ins`,
+      unlock: "Unlock",
+      suspend: "Suspend",
+      unsuspend: "Restore access",
+      deleteMember: "Delete this account",
+      deleteTitle: (name: string) => `Delete ${name}?`,
+      deleteWarning:
+        "This removes the account and everything in its folder. Downloads already in the shared library are untouched. This cannot be undone.",
+      deleteConfirm: (name: string) => `Type ${name} to confirm`,
+      deleteAction: "Delete permanently",
+      deleted: "Account deleted",
       viewHistory: "View history",
-      copyLink: "Copy link",
-      permissionsAndUsage: "Permissions and usage",
-      copyFailed: "Could not copy — select the link and copy it by hand.",
+      saved: "Saved",
+
+      dialog: {
+        permissions: "Permissions",
+        usage: "Usage",
+        group: "Group",
+        groupHint:
+          "The group sets the defaults. Anything decided below overrides them for this person only.",
+        close: "Close",
+      },
+
+      // Three states, because a permission has three: taken from the group,
+      // granted here, refused here. A checkbox could only ever express two,
+      // and once ticked there was no way back to the group's value.
+      tri: {
+        inherit: "Inherited",
+        allow: "Allowed",
+        deny: "Refused",
+        inheritedFrom: (group: string, value: string) => `${group}: ${value}`,
+        yes: "allowed",
+        no: "refused",
+      },
+
+      limits: {
+        quotaBytes: "Storage quota",
+        quotaBytesHint: "Total size this account's folder may reach.",
+        maxFileSizeBytes: "Maximum file size",
+        maxFileSizeBytesHint:
+          "A download above this is stopped and removed. Sizes are estimated before starting, so the warning may come mid-download.",
+        maxConcurrentDownloads: "Simultaneous downloads",
+        maxConcurrentDownloadsHint:
+          "Downloads this account may run at once, within the instance limit.",
+        unlimited: "Unlimited",
+        custom: "Limit",
+        unitGb: "GB",
+        unitCount: "at a time",
+      },
+
+      permissions: {
+        canDownload: "Download",
+        canKeepInLibrary: "Keep files in the library",
+        canManageFiles: "Rename, move and delete files",
+        canManageSettings: "See the instance settings",
+        canManageEngine: "Manage the engine",
+        canManageEngineHint:
+          "Update yt-dlp, change concurrency, clean up temporary files.",
+        canHavePrivateFolder: "May keep a private folder",
+        canBrowseWholeLibrary: "See the whole library",
+        isAdmin: "Administrator",
+        isAdminHint: "Implies every other permission.",
+      },
+
+      groups: {
+        title: "Groups",
+        hint: "A group sets the defaults for everyone in it.",
+        members: (n: number) => `${n} user${n > 1 ? "s" : ""}`,
+        newGroup: "New group",
+        name: "Group name",
+        builtIn: "Built in",
+        edit: "Edit",
+        deleteGroup: "Delete this group",
+        adminLocked:
+          "The Administrators group keeps its powers, so the instance always has someone able to manage it.",
+      },
+
+      invites: {
+        title: "Invitations",
+        hint: "The link carries the address you are using right now — open Siphon on the address you want to share before creating one.",
+        forWhom: "Who is it for?",
+        forWhomPlaceholder: "e.g. Alice",
+        forWhomHint:
+          "Shown to them when they open the link, and to you in the list below. Optional.",
+        uses: "Uses",
+        usesHint: "One link can create several accounts.",
+        create: "Create invitation",
+        copied: "Invitation link copied",
+        copyLink: "Copy link",
+        copyFailed: "Could not copy — select the link and copy it by hand.",
+        expires: (when: string) => `Expires ${when}`,
+        usedCount: (used: number, max: number) => `${used} of ${max} used`,
+        unnamed: "No name",
+        revoke: "Revoke",
+        revokeTitle: "Revoke this invitation?",
+        revokeWarning:
+          "The link stops working immediately. Anyone who has it can no longer create an account. Accounts already created are untouched.",
+        revoked: "Invitation revoked",
+        empty: "No invitation outstanding.",
+      },
 
       diskUsed: "On disk",
       wholeLibrary: "Whole library",
@@ -293,31 +444,6 @@ export const en = {
       failedCount: "Failed",
       lastDownload: "Last download",
       never: "Never",
-      newGroup: "New group",
-      groupName: "Group name",
-      inherited: "From group",
-      deleteMember: "Remove this member",
-      suspend: "Suspend",
-      lockedBySystem: (when: string) =>
-        `Locked by the system until ${when} — too many failed sign-ins`,
-      unlock: "Unlock",
-      unsuspend: "Restore access",
-      suspended: "Suspended",
-      deleteTitle: (name: string) => `Delete ${name}?`,
-      deleteWarning:
-        "This removes the account and everything in its folder. Downloads already in the shared library are untouched. This cannot be undone.",
-      deleteConfirm: (name: string) => `Type ${name} to confirm`,
-      deleteAction: "Delete permanently",
-      deleted: "Account deleted",
-      permissions: {
-        canDownload: "Download",
-        canKeepInLibrary: "Keep files in the library",
-        canManageFiles: "Rename, move and delete files",
-        canManageSettings: "Change application settings",
-        canHavePrivateFolder: "May keep a private folder",
-        canBrowseWholeLibrary: "See the whole library",
-        isAdmin: "Administrator",
-      },
     },
 
     privacy: {
@@ -451,6 +577,8 @@ export const en = {
     accountLockedUntil: (when: string) =>
       `Too many failed attempts. This account is locked until ${when}.`,
     account_suspended: "This account has been suspended by an administrator.",
+    file_too_large: "This download is larger than your account allows.",
+    quota_exceeded: "This would go over your storage quota.",
     csrf_failed: "That request could not be verified. Reload and try again.",
     account_locked:
       "Too many failed attempts. This account is locked for a few minutes.",
@@ -481,6 +609,10 @@ export const en = {
     geo_blocked: "This video is not available in your country.",
     bot_check: "YouTube asked for a human check. Try again later.",
     no_format: "No format matches the requested quality.",
+    file_too_large:
+      "Stopped: this download went over the size allowed for your account.",
+    quota_exceeded:
+      "Stopped: your storage quota is full. Free some space and try again.",
     network: "Network error while reaching the platform.",
     ffmpeg_missing: "ffmpeg was not found — it is required to merge streams.",
     unknown: "Download failed.",

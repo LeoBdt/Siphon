@@ -10,13 +10,7 @@ import type {
 } from "@app/shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { FolderPicker } from "@/components/folder-picker";
@@ -32,7 +26,8 @@ import {
   useProbe,
 } from "@/lib/hooks";
 import { ModeTabs } from "@/components/ui/mode-tabs";
-import { formatDuration } from "@/lib/format";
+import { formatBytes, formatDuration } from "@/lib/format";
+import type { ApiError } from "@/lib/api";
 import { DUR, EASE_OUT } from "@/lib/motion";
 import { PAGE_COLUMN, cn } from "@/lib/utils";
 import { useI18n } from "@/components/i18n-provider";
@@ -60,7 +55,7 @@ interface Draft {
 const EMPTY_DRAFT: Draft = { url: "", preset: "best", dest: "" };
 
 export default function DownloadPage() {
-  const { t, errorMessage } = useI18n();
+  const { t, intl, errorMessage } = useI18n();
   const qc = useQueryClient();
   const saved = qc.getQueryData<Draft>(DRAFT_KEY) ?? EMPTY_DRAFT;
 
@@ -88,6 +83,9 @@ export default function DownloadPage() {
   function setUrl(v: string) {
     keep({ url: v });
     setUrlState(v);
+    // A different URL is a different size: whatever was refused no longer
+    // applies to what is in the field.
+    setLimitBlock(null);
     // A different URL means a different playlist: forget the previous picks.
     setSelected(null);
   }
@@ -106,6 +104,14 @@ export default function DownloadPage() {
     const id = setTimeout(() => setDebouncedUrl(url.trim()), 500);
     return () => clearTimeout(id);
   }, [url]);
+
+  /** A probe failure, in the language of the interface. */
+  const probeErrorMessage = (err: unknown) => {
+    const code = (err as ApiError | null)?.code;
+    return code && code in t.errors
+      ? t.errors[code as keyof typeof t.errors]
+      : t.download.probeFailed;
+  };
 
   const validUrl = YT_URL_RE.test(debouncedUrl);
   const rickRolled = validUrl && isRickRoll(debouncedUrl);
@@ -183,7 +189,21 @@ export default function DownloadPage() {
     (!isPlaylist || selected.size > 0) &&
     !probe.isLoading;
 
-  async function handleSubmit() {
+  /**
+   * A refusal on size or quota, with the figures behind it.
+   *
+   * Kept on the page rather than thrown at a toast: it carries a decision
+   * when the size was only estimated, and a four-second message is no place
+   * to put one.
+   */
+  const [limitBlock, setLimitBlock] = useState<{
+    code: "file_too_large" | "quota_exceeded";
+    limitBytes: number;
+    estimatedBytes: number | null;
+    canOverride: boolean;
+  } | null>(null);
+
+  async function handleSubmit(acceptEstimate = false) {
     if (!canSubmit) return;
     try {
       await create.mutateAsync({
@@ -193,13 +213,25 @@ export default function DownloadPage() {
         advanced,
         playlistItems: isPlaylist ? [...selected] : null,
         retention,
+        acceptEstimate,
       });
       toast.success(
         isPlaylist ? t.download.startedMany(selected.size) : t.download.started,
       );
+      setLimitBlock(null);
       setUrl("");
       setDebouncedUrl("");
     } catch (err) {
+      const e = err as ApiError;
+      if (e.code === "file_too_large" || e.code === "quota_exceeded") {
+        setLimitBlock({
+          code: e.code,
+          limitBytes: e.limitBytes ?? 0,
+          estimatedBytes: e.estimatedBytes ?? null,
+          canOverride: Boolean(e.canOverride),
+        });
+        return;
+      }
       toast.error(errorMessage(err));
     }
   }
@@ -215,12 +247,10 @@ export default function DownloadPage() {
         </p>
       </div>
 
+      {/* One card, and no header inside it: the page heading two lines above
+          already said what this is, so the card was titling a title. */}
       <Card>
-        <CardHeader>
-          <CardTitle>{t.download.cardTitle}</CardTitle>
-          <CardDescription>{t.download.cardDescription}</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-5">
+        <CardContent className="flex flex-col gap-5 pt-6">
           <motion.div
             // Remounting on the flag replays the beat each time the classic is
             // pasted again. Reduced motion is neutralised globally in
@@ -272,8 +302,11 @@ export default function DownloadPage() {
                   </span>
                 </div>
               ) : probe.isError ? (
+                // The server now says why: a private video and a bot check
+                // are not the same problem, and "could not read this link"
+                // sent people to check a URL that was fine.
                 <p className="text-sm text-destructive">
-                  {t.download.probeFailed}
+                  {probeErrorMessage(probe.error)}
                 </p>
               ) : info ? (
                 <div className="flex gap-3">
@@ -318,6 +351,22 @@ export default function DownloadPage() {
             />
           )}
 
+          {/*
+            Options are folded away until there is a URL to apply them to.
+            Quality, retention and a destination folder are three decisions
+            about a video nobody has named yet — on an empty page they were
+            simply a wall to scroll past on the way to the one field that
+            matters.
+          */}
+          <AnimatePresence initial={false}>
+            {validUrl && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.25, ease: EASE_OUT }}
+                className="flex flex-col gap-5 overflow-hidden"
+              >
           {/* Quality */}
           <div className="flex flex-col gap-2">
             <span className="text-sm font-medium">{t.download.quality}</span>
@@ -385,12 +434,49 @@ export default function DownloadPage() {
             </Button>
           </div>
           )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* A refusal, with what to do about it when there is anything to
+              do. It sits above the button because it is about to explain why
+              pressing it did nothing. */}
+          {limitBlock && (
+            <div className="flex flex-col gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3">
+              <p className="text-sm">
+                {limitBlock.code === "quota_exceeded"
+                  ? t.download.tooLarge.quota(
+                      formatBytes(limitBlock.limitBytes, intl),
+                    )
+                  : limitBlock.canOverride
+                    ? t.download.tooLarge.warn(
+                        formatBytes(limitBlock.estimatedBytes ?? 0, intl),
+                        formatBytes(limitBlock.limitBytes, intl),
+                      )
+                    : t.download.tooLarge.refused(
+                        formatBytes(limitBlock.estimatedBytes ?? 0, intl),
+                        formatBytes(limitBlock.limitBytes, intl),
+                      )}
+              </p>
+              {limitBlock.canOverride && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="self-start"
+                  onClick={() => void handleSubmit(true)}
+                >
+                  <Download className="size-4" />
+                  {t.download.tooLarge.anyway}
+                </Button>
+              )}
+            </div>
+          )}
 
           <Button
             size="lg"
             className="h-11"
             disabled={!canSubmit}
-            onClick={handleSubmit}
+            onClick={() => void handleSubmit()}
           >
             {create.isPending ? (
               <DotProgress

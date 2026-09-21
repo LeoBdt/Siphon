@@ -57,13 +57,24 @@ export async function adminRoutes(app: FastifyInstance) {
   );
 
   app.post("/api/admin/invites", adminOnly, async (req) => {
-    const { groupId } = (req.body ?? {}) as { groupId?: string };
-    const invite = createInvite(groupId ?? GROUP_MEMBER_ID);
+    const { groupId, label, maxUses } = (req.body ?? {}) as {
+      groupId?: string;
+      label?: string;
+      maxUses?: number;
+    };
+    const invite = createInvite({
+      groupId: groupId ?? GROUP_MEMBER_ID,
+      label,
+      maxUses: typeof maxUses === "number" ? maxUses : 1,
+      createdBy: req.user ?? null,
+    });
     record({
       action: "invite.created",
       actorId: req.user?.id,
       actorName: req.user?.username,
-      target: invite.groupName,
+      // The name it was addressed to says more than the group, when there is
+      // one: an audit line reading "Members" tells nobody which link this was.
+      target: invite.label ?? invite.groupName,
       ip: req.ip,
     });
     return invite;
@@ -89,6 +100,7 @@ export async function adminRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const body = (req.body ?? {}) as {
       username?: string;
+      displayName?: string | null;
       password?: string;
       groupId?: string;
       overrides?: Partial<PermissionOverrides>;

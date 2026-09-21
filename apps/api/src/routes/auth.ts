@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import type { AuthState, Credentials, InvitePreview, User } from "@app/shared";
-import { GROUP_ADMIN_ID, MIN_PASSWORD_LENGTH } from "@app/shared";
+import { GROUP_ADMIN_ID, MAX_DISPLAY_NAME, MIN_PASSWORD_LENGTH } from "@app/shared";
 import { verifyPassword } from "../auth/password.js";
 import {
   clearAttempts,
@@ -25,6 +25,7 @@ import {
   previewInvite,
   recordLoginFailure,
   revokeSession,
+  setDisplayName,
   setPrivateFolder,
   stageTotpSecret,
   totpSecretOf,
@@ -38,6 +39,43 @@ export async function authRoutes(app: FastifyInstance) {
     user: req.user ?? null,
     notice: req.user ? pendingNotice(req.user.id) : null,
   }));
+
+  /**
+   * One's own profile.
+   *
+   * Deliberately not the admin route with a self check bolted on: this one
+   * cannot touch a group, a permission or anyone else's account, so there is
+   * no rule to get wrong. Today it holds the display name; a password change
+   * for oneself belongs here too.
+   */
+  app.patch("/api/auth/profile", async (req, reply) => {
+    if (!req.user) {
+      return reply
+        .code(401)
+        .send({ code: "unauthenticated", error: "Sign in required" });
+    }
+    const { displayName } = (req.body ?? {}) as { displayName?: string | null };
+    if (displayName !== undefined && typeof displayName !== "string" && displayName !== null) {
+      return reply
+        .code(400)
+        .send({ code: "invalid_name", error: "Name must be text" });
+    }
+    if (typeof displayName === "string" && displayName.length > MAX_DISPLAY_NAME) {
+      return reply.code(400).send({
+        code: "invalid_name",
+        error: `Name must be at most ${MAX_DISPLAY_NAME} characters`,
+      });
+    }
+    const updated = setDisplayName(req.user.id, displayName ?? null);
+    record({
+      action: "user.updated",
+      actorId: req.user.id,
+      actorName: req.user.username,
+      target: req.user.username,
+      ip: req.ip,
+    });
+    return updated;
+  });
 
   /** Acknowledge a one-off notice so it stops being shown. */
   app.post("/api/auth/notice/dismiss", async (req) => {
@@ -79,7 +117,7 @@ export async function authRoutes(app: FastifyInstance) {
         .code(409)
         .send({ code: "already_setup", error: "Already configured" });
     }
-    const { username, password } = (req.body ?? {}) as Partial<Credentials>;
+    const { username, password, displayName } = (req.body ?? {}) as Partial<Credentials>;
     if (!username?.trim()) {
       return reply
         .code(400)
@@ -95,6 +133,9 @@ export async function authRoutes(app: FastifyInstance) {
     const user = await createUser({
       username: username.trim(),
       password,
+      // The first account is a person too: without a name, every invitation
+      // they send later would have nobody to attribute it to.
+      displayName: displayName?.slice(0, MAX_DISPLAY_NAME) ?? null,
       groupId: GROUP_ADMIN_ID,
     });
     const session = createSession(user.id);
@@ -110,7 +151,7 @@ export async function authRoutes(app: FastifyInstance) {
 
   app.post("/api/auth/invite/:token", async (req, reply) => {
     const { token } = req.params as { token: string };
-    const { username, password } = (req.body ?? {}) as Partial<Credentials>;
+    const { username, password, displayName } = (req.body ?? {}) as Partial<Credentials>;
     if (!username?.trim()) {
       return reply
         .code(400)
@@ -124,7 +165,12 @@ export async function authRoutes(app: FastifyInstance) {
     }
     let user;
     try {
-      user = await acceptInvite(token, username.trim(), password);
+      user = await acceptInvite(
+        token,
+        username.trim(),
+        password,
+        displayName?.slice(0, MAX_DISPLAY_NAME) ?? null,
+      );
     } catch {
       return reply
         .code(409)

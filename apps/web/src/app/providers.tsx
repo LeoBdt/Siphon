@@ -35,7 +35,15 @@ export function Providers({
       <I18nProvider locale={locale}>
         <QueryClientProvider client={queryClient}>
           <WsProvider>
-            <TooltipProvider delay={200}>
+            {/*
+              Short, because in this app a tooltip is often the only label
+              there is: the sidebar is an icon rail, and its names live in
+              these. A delay that suits a hint on an already-labelled control
+              makes navigation feel unresponsive. `closeDelay` keeps the label
+              alive while the pointer travels between two tiles, so moving
+              down the rail does not flash it off and on.
+            */}
+            <TooltipProvider delay={60} closeDelay={80}>
               <PlayerProvider>{children}</PlayerProvider>
             </TooltipProvider>
           </WsProvider>

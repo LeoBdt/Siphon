@@ -9,6 +9,7 @@ import type {
 import { QUALITY_PRESETS } from "@app/shared";
 import { config } from "../config.js";
 import { killTree } from "./kill-tree.js";
+import { parseFormats, type FormatSummary } from "./size-estimate.js";
 import {
   FILE_PREFIX,
   POST_PREFIX,
@@ -120,6 +121,11 @@ function spawnYtdlp(
 export interface ProbeResult {
   info: VideoInfo;
   entries: VideoInfoEntry[];
+  /**
+   * The formats yt-dlp listed, so a size limit can be judged before anything
+   * is downloaded. Empty for a playlist probe, which is flat by design.
+   */
+  formats: FormatSummary[];
 }
 
 function youtubeThumb(id: string): string | null {
@@ -187,7 +193,7 @@ export function probeInfo(url: string): Promise<ProbeResult> {
           entryCount: isPlaylist ? entries.length : null,
           entries: isPlaylist ? entries : undefined,
         };
-        resolve({ info, entries });
+        resolve({ info, entries, formats: parseFormats(data) });
       } catch (e) {
         reject(new Error(`Unreadable yt-dlp output: ${(e as Error).message}`));
       }
@@ -201,6 +207,8 @@ export function probeInfo(url: string): Promise<ProbeResult> {
 
 export interface DownloadProgress {
   progress: number | null;
+  downloadedBytes?: number | null;
+  totalBytes?: number | null;
   speedBytesPerSec: number | null;
   etaSeconds: number | null;
   phase: DownloadPhase;

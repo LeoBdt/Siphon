@@ -19,6 +19,7 @@ import {
   type ListFilter,
 } from "../db.js";
 import {
+  LimitError,
   cancelDownload,
   createDownload,
   isPresetId,
@@ -26,6 +27,7 @@ import {
   retryDownload,
 } from "../downloads-manager.js";
 import { probeInfo } from "../lib/ytdlp.js";
+import { classifyYtdlpError } from "../lib/ytdlp-parse.js";
 import { resolveInsideRoot, PathError } from "../lib/paths.js";
 
 export async function downloadsRoutes(app: FastifyInstance) {
@@ -37,7 +39,14 @@ export async function downloadsRoutes(app: FastifyInstance) {
       const { info } = await probeInfo(url);
       return info;
     } catch (err) {
-      return reply.code(422).send({ error: (err as Error).message });
+      // Classified like a failed download, rather than handed over raw. A
+      // probe fails for the same handful of reasons — a private video, a bot
+      // check, no network — and "422" told nobody which. The detail is logged
+      // for whoever runs the server; the code is what the interface renders,
+      // in its own language.
+      const { code, detail } = classifyYtdlpError((err as Error).message);
+      req.log.warn({ url, code, detail }, "probe failed");
+      return reply.code(422).send({ code, error: detail || code });
     }
   });
 
@@ -132,12 +141,25 @@ export async function downloadsRoutes(app: FastifyInstance) {
           advanced,
           playlistItems,
           retention,
+          acceptEstimate: Boolean(body.acceptEstimate),
         },
         req.user?.id ?? null,
         libraryRootFor(req.user),
       );
       return reply.code(201).send(job);
     } catch (err) {
+      // A limit is not a failure to download: it is an answer, with figures
+      // the interface needs to explain itself and to offer going ahead when
+      // the size was only estimated.
+      if (err instanceof LimitError) {
+        return reply.code(413).send({
+          code: err.code,
+          error: err.code,
+          limitBytes: err.limitBytes,
+          estimatedBytes: err.estimatedBytes,
+          canOverride: err.overridable,
+        });
+      }
       return reply.code(422).send({ error: (err as Error).message });
     }
     },

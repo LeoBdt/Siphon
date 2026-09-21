@@ -19,9 +19,13 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
         </p>
       </div>
 
-      <SettingsNav />
-
-      <div className="flex flex-col gap-6">{children}</div>
+      {/* Side by side once there is room for it: with seven sections in two
+          groups, a horizontal strip would wrap or scroll past what it is
+          navigating. */}
+      <div className="flex flex-col gap-6 md:flex-row md:gap-8">
+        <SettingsNav />
+        <div className="flex min-w-0 flex-1 flex-col gap-6">{children}</div>
+      </div>
     </div>
   );
 }

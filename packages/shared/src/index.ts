@@ -125,6 +125,10 @@ export type DownloadErrorCode =
   | "geo_blocked"
   | "bot_check"
   | "no_format"
+  /** Stopped because the file exceeded the size allowed for this account. */
+  | "file_too_large"
+  /** Stopped because the account's storage quota would have been exceeded. */
+  | "quota_exceeded"
   | "network"
   | "ffmpeg_missing"
   | "unknown";
@@ -148,6 +152,15 @@ export interface CreateDownloadRequest {
   /** Defaults to "library"; "direct" needs the canKeepInLibrary permission off
    *  or on — either way the file is removed once fetched. */
   retention?: RetentionMode;
+  /**
+   * Go ahead although the estimated size looks over the limit.
+   *
+   * Only ever honoured when the estimate was approximate: a size yt-dlp
+   * measured exactly is refused whatever this says. It exists because most
+   * sizes are guesses, and refusing a download on a guess blocks plenty that
+   * would have fit.
+   */
+  acceptEstimate?: boolean;
 }
 
 /** A single entry of a playlist/channel, for the selection UI. */
@@ -254,6 +267,9 @@ export type ApiErrorCode =
   | "concurrency_out_of_range"
   | "already_exists"
   | "invalid_path"
+  /** The download was refused by this account's size or quota limit. */
+  | "file_too_large"
+  | "quota_exceeded"
   | "not_found";
 
 export interface ApiErrorBody {
@@ -341,8 +357,20 @@ export interface Permissions {
   canKeepInLibrary: boolean;
   /** Rename, move and delete inside the library. */
   canManageFiles: boolean;
-  /** Read and change application settings (concurrency, cleanup, yt-dlp). */
+  /** See the instance's settings: disk usage, storage. */
   canManageSettings: boolean;
+  /**
+   * Act on the download engine: concurrency, temp-file cleanup, updating
+   * yt-dlp, checking for a new Siphon.
+   *
+   * Held apart from canManageSettings because it is a different kind of
+   * power. Changing a preference affects what someone sees; updating yt-dlp
+   * replaces the binary every download on the instance runs through, and
+   * raising concurrency spends the server's bandwidth and CPU. A member has no
+   * business doing either — and until this existed, every one of those routes
+   * was reachable by anyone with an account.
+   */
+  canManageEngine: boolean;
   /** Administer members and groups. Implies every other permission. */
   isAdmin: boolean;
   /**
@@ -359,8 +387,16 @@ export interface Permissions {
   canBrowseWholeLibrary: boolean;
   /** Downloads this member may run at once. Null means the global setting. */
   maxConcurrentDownloads: number | null;
-  /** Bytes this member's files may occupy. Null means no quota. */
+  /** Bytes this member's files may occupy in total. Null means no quota. */
   quotaBytes: number | null;
+  /**
+   * Bytes a single download may reach. Null means no ceiling.
+   *
+   * Enforced in two places, because the size is only ever estimated up front:
+   * the probe refuses what it can measure exactly, and the progress lines cut
+   * off anything that turns out to exceed it while running.
+   */
+  maxFileSizeBytes: number | null;
 }
 
 /** A per-user override: null on a field means "inherit from the group". */
@@ -379,7 +415,16 @@ export interface Group {
 
 export interface User {
   id: string;
+  /** The handle they sign in with. Unique, filesystem-safe-ish, never shown in a sentence. */
   username: string;
+  /**
+   * What to call this person, when they have said.
+   *
+   * Null is not a gap to paper over with the username: "admin invites you"
+   * reads like a system account wrote it. Anything addressed to a human either
+   * has a name or does without one.
+   */
+  displayName: string | null;
   groupId: string;
   groupName: string;
   /** Only the fields this user overrides; the rest come from the group. */
@@ -434,19 +479,42 @@ export interface Invite {
   token: string;
   groupId: string;
   groupName: string;
+  /**
+   * Who it was meant for, as the administrator wrote it. Optional: an
+   * invitation with several uses is addressed to nobody in particular.
+   */
+  label: string | null;
+  /** How many accounts this link may still create, and how many it has. */
+  maxUses: number;
+  usedCount: number;
+  /** Who sent it, resolved now — see `invitedBy` on the preview. */
+  invitedBy: string | null;
   createdAt: string;
   expiresAt: string;
+  lastUsedAt: string | null;
 }
 
 /** What an invitee sees before accepting, without revealing anything else. */
 export interface InvitePreview {
   valid: boolean;
   groupName: string | null;
+  /** The name the invitation was addressed to, when it has one. */
+  label: string | null;
+  /**
+   * Who is inviting, resolved when the page is opened rather than frozen when
+   * the link was made: an administrator who sets their name afterwards fixes
+   * every invitation still outstanding, instead of having to reissue them.
+   * Null when that account has no name, or no longer exists — and then the
+   * page simply does not name anyone.
+   */
+  invitedBy: string | null;
 }
 
 export interface Credentials {
   username: string;
   password: string;
+  /** Optional from the start: an account can be named later, in the profile. */
+  displayName?: string;
 }
 
 /**
@@ -535,6 +603,12 @@ export type RetentionMode = "library" | "direct";
  * the person choosing the password is the person carrying the risk.
  */
 export const MIN_PASSWORD_LENGTH = 8;
+
+/** A display name is a name, not a biography. */
+export const MAX_DISPLAY_NAME = 40;
+
+/** Uses a single invitation link may be given. */
+export const MAX_INVITE_USES = 50;
 
 export const GROUP_ADMIN_ID = "admin";
 export const GROUP_MEMBER_ID = "member";

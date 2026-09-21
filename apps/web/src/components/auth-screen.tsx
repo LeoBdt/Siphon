@@ -3,7 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { motion } from "motion/react";
 import { Loader2 } from "lucide-react";
-import { MIN_PASSWORD_LENGTH } from "@app/shared";
+import { MAX_DISPLAY_NAME, MIN_PASSWORD_LENGTH } from "@app/shared";
 import { SiphonMark } from "@/components/siphon-mark";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { useI18n } from "@/components/i18n-provider";
@@ -24,6 +24,8 @@ export type AuthMode = "signIn" | "setup" | "invite";
 export function AuthScreen({
   mode,
   groupName,
+  greeting,
+  invitedName,
   pending,
   error,
   needsCode,
@@ -32,6 +34,10 @@ export function AuthScreen({
   mode: AuthMode;
   /** For an invitation: the group the invitee is joining. */
   groupName?: string | null;
+  /** For an invitation: who is inviting, already phrased. */
+  greeting?: string | null;
+  /** For an invitation: the name it was addressed to, to start them off. */
+  invitedName?: string | null;
   pending: boolean;
   error?: string | null;
   /** The account has a second factor: ask for the code as well. */
@@ -39,6 +45,7 @@ export function AuthScreen({
   onSubmit: (credentials: {
     username: string;
     password: string;
+    displayName?: string;
     code?: string;
   }) => void;
 }) {
@@ -46,6 +53,10 @@ export function AuthScreen({
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
+  // Prefilled from the invitation when it was addressed to someone: they can
+  // change it, but being greeted by name and then asked for it again is a
+  // small insult.
+  const [displayName, setDisplayName] = useState(invitedName ?? "");
 
   const copy = {
     signIn: {
@@ -59,7 +70,10 @@ export function AuthScreen({
       submit: t.auth.submitSetup,
     },
     invite: {
-      title: t.auth.inviteTitle,
+      // The greeting, when the invitation carries one, replaces the generic
+      // title: "Alice, Leo invites you to Siphon" says everything the heading
+      // and the subtitle were saying separately.
+      title: greeting ?? t.auth.inviteTitle,
       subtitle: groupName
         ? t.auth.inviteSubtitle(groupName)
         : t.auth.inviteTitle,
@@ -81,6 +95,7 @@ export function AuthScreen({
       onSubmit({
         username: username.trim(),
         password,
+        displayName: newAccount ? displayName.trim() || undefined : undefined,
         code: needsCode ? code.trim() : undefined,
       });
     }
@@ -104,13 +119,33 @@ export function AuthScreen({
         <p className="mt-1.5 text-sm text-muted-foreground">{copy.subtitle}</p>
 
         <form onSubmit={submit} className="mt-6 flex flex-col gap-4">
+          {/* Asked for first, because it is the question a person answers
+              without thinking. The username below is a handle, and saying so
+              here stops people from putting their name in it. */}
+          {newAccount && (
+            <label className="flex flex-col gap-1.5 text-sm font-medium">
+              {t.auth.displayName}
+              <Input
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                maxLength={MAX_DISPLAY_NAME}
+                autoComplete="name"
+                placeholder={t.auth.displayNamePlaceholder}
+                className="h-10"
+              />
+              <span className="text-xs font-normal text-muted-foreground">
+                {t.auth.displayNameHint}
+              </span>
+            </label>
+          )}
+
           <label className="flex flex-col gap-1.5 text-sm font-medium">
             {t.auth.username}
             <Input
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              autoComplete={newAccount ? "username" : "username"}
-              autoFocus
+              autoComplete="username"
+              autoFocus={!newAccount}
               className="h-10"
             />
           </label>

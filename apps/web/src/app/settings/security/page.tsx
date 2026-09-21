@@ -1,14 +1,12 @@
-import { LanguageCard, ThemeCard } from "@/components/settings/cards";
 import {
   PrivateFolderCard,
   SecondFactorCard,
 } from "@/components/settings/security";
 
-export default function GeneralSettingsPage() {
+/** What protects the account, and what it keeps out of other people's sight. */
+export default function SecuritySettingsPage() {
   return (
     <>
-      <ThemeCard />
-      <LanguageCard />
       <SecondFactorCard />
       <PrivateFolderCard />
     </>

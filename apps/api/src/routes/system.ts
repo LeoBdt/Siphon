@@ -56,7 +56,12 @@ export async function systemRoutes(app: FastifyInstance) {
 
   // Update settings. Every field is optional: the page sends only what the
   // user touched, so a card never overwrites a setting it does not own.
-  app.put("/api/settings", async (req, reply) => {
+  // Concurrency and yt-dlp's auto-update spend the server's bandwidth, CPU and
+  // replace the binary every download runs through. Until canManageEngine
+  // existed, this route was reachable by anyone with an account.
+  const engineOnly = { preHandler: requirePermission("canManageEngine") };
+
+  app.put("/api/settings", engineOnly, async (req, reply) => {
     const body = (req.body ?? {}) as Partial<AppSettings>;
 
     if (body.maxConcurrentDownloads !== undefined) {
@@ -90,7 +95,7 @@ export async function systemRoutes(app: FastifyInstance) {
 
   // Sweep leftover yt-dlp temp files (partials, un-merged DASH streams).
   // Refused while downloads run: their in-flight partials look identical.
-  app.post("/api/system/cleanup", async (_req, reply) => {
+  app.post("/api/system/cleanup", engineOnly, async (_req, reply) => {
     if (activeJobCount() > 0) {
       return reply.code(409).send({
         code: "downloads_active",
@@ -132,7 +137,7 @@ export async function systemRoutes(app: FastifyInstance) {
    */
   app.post(
     "/api/system/release-check",
-    { preHandler: requirePermission("isAdmin") },
+    engineOnly,
     async (): Promise<ReleaseCheck> => checkLatestRelease(APP_VERSION),
   );
 
@@ -145,7 +150,7 @@ export async function systemRoutes(app: FastifyInstance) {
    * read before they admit nothing happened, and they are English whatever
    * language the app is set to.
    */
-  app.post("/api/system/ytdlp/update", async (): Promise<YtdlpUpdateResult> => {
+  app.post("/api/system/ytdlp/update", engineOnly, async (): Promise<YtdlpUpdateResult> => {
     const previousVersion = await ytdlpVersion();
     const { ok, output } = await ytdlpUpdate();
     recordCheck();

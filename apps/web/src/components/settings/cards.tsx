@@ -36,6 +36,7 @@ import { ThemeSwitcher } from "@/components/theme-switcher";
 import { useI18n } from "@/components/i18n-provider";
 import { Segmented } from "@/components/ui/segmented";
 import {
+  useAuthState,
   useCleanup,
   useDiskUsage,
   useSettings,
@@ -100,7 +101,20 @@ export function LanguageCard() {
 
 // ---------------------------------------------------------------------------
 
+/**
+ * Whether this visitor may act on the engine.
+ *
+ * The navigation already hides these sections, and the server refuses the
+ * calls — but a route is still reachable by typing its address, and a card
+ * full of controls that all answer 403 is worse than no card.
+ */
+function useCanManageEngine(): boolean {
+  const { data } = useAuthState();
+  return Boolean(data?.user?.effective.canManageEngine);
+}
+
 export function ConcurrencyCard() {
+  const mayManage = useCanManageEngine();
   const { t, errorMessage } = useI18n();
   const { data, isLoading, isError, error, refetch } = useSettings();
   const update = useUpdateSettings();
@@ -122,6 +136,8 @@ export function ConcurrencyCard() {
   // uncontrolled, so we use `null` (= no selection) while the query loads.
   const value = data ? String(data.maxConcurrentDownloads) : null;
 
+
+  if (!mayManage) return null;
   return (
     <Card>
       <CardHeader>
@@ -231,6 +247,7 @@ export function DiskCard() {
 // ---------------------------------------------------------------------------
 
 export function CleanupCard() {
+  const mayManage = useCanManageEngine();
   const { t, intl, errorMessage } = useI18n();
   const cleanup = useCleanup();
 
@@ -246,6 +263,8 @@ export function CleanupCard() {
     });
   }
 
+
+  if (!mayManage) return null;
   return (
     <Card>
       <CardHeader>
@@ -284,6 +303,7 @@ export function CleanupCard() {
  * instead.
  */
 export function UpdateCard() {
+  const mayManage = useCanManageEngine();
   const { t, intl, errorMessage } = useI18n();
   const check = useReleaseCheck();
   const u = t.settings.update;
@@ -298,6 +318,8 @@ export function UpdateCard() {
           ? u.unreachable
           : null;
 
+
+  if (!mayManage) return null;
   return (
     <Card>
       <CardHeader>
@@ -379,6 +401,7 @@ export function UpdateCard() {
 const YTDLP_STALE_DAYS = 14;
 
 export function YtdlpCard() {
+  const mayManage = useCanManageEngine();
   const { t, intl, errorMessage } = useI18n();
   const { data, isLoading } = useYtdlpInfo();
   const settings = useSettings();
@@ -435,6 +458,8 @@ export function YtdlpCard() {
           ? { tone: "text-destructive", text: y.failed }
           : null;
 
+
+  if (!mayManage) return null;
   return (
     <Card>
       <CardHeader>

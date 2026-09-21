@@ -62,18 +62,34 @@ export class ApiError extends Error {
   readonly status: number;
   /** For a locked account: when it opens again, so the UI can say so. */
   readonly lockedUntil?: string;
+  /**
+   * For a size or quota refusal: the figures behind it, and whether going
+   * ahead is on offer. The interface needs the numbers to say "2.3 GB, your
+   * limit is 1 GB" rather than something vague.
+   */
+  readonly limitBytes?: number;
+  readonly estimatedBytes?: number | null;
+  readonly canOverride?: boolean;
 
   constructor(
     message: string,
     status: number,
     code?: ApiErrorCode,
-    lockedUntil?: string,
+    extra?: {
+      lockedUntil?: string;
+      limitBytes?: number;
+      estimatedBytes?: number | null;
+      canOverride?: boolean;
+    },
   ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
-    this.lockedUntil = lockedUntil;
+    this.lockedUntil = extra?.lockedUntil;
+    this.limitBytes = extra?.limitBytes;
+    this.estimatedBytes = extra?.estimatedBytes;
+    this.canOverride = extra?.canOverride;
   }
 }
 
@@ -81,17 +97,30 @@ async function toApiError(res: Response): Promise<ApiError> {
   const body = await res.text().catch(() => "");
   let message = "";
   let code: ApiErrorCode | undefined;
-  let lockedUntil: string | undefined;
+  let extra: {
+    lockedUntil?: string;
+    limitBytes?: number;
+    estimatedBytes?: number | null;
+    canOverride?: boolean;
+  } = {};
   try {
     const parsed = JSON.parse(body) as {
       error?: string;
       message?: string;
       code?: ApiErrorCode;
       lockedUntil?: string;
+      limitBytes?: number;
+      estimatedBytes?: number | null;
+      canOverride?: boolean;
     };
     message = parsed.error ?? parsed.message ?? "";
     code = parsed.code;
-    lockedUntil = parsed.lockedUntil;
+    extra = {
+      lockedUntil: parsed.lockedUntil,
+      limitBytes: parsed.limitBytes,
+      estimatedBytes: parsed.estimatedBytes,
+      canOverride: parsed.canOverride,
+    };
   } catch {
     // Not JSON — fall through to the generic message below.
   }
@@ -100,7 +129,7 @@ async function toApiError(res: Response): Promise<ApiError> {
     else if (res.status >= 500) message = "The server hit an error";
     else message = body.trim() || `Error ${res.status}`;
   }
-  return new ApiError(message, res.status, code, lockedUntil);
+  return new ApiError(message, res.status, code, extra);
 }
 
 export async function apiFetch<T>(

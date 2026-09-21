@@ -21,7 +21,15 @@ export const fr: Dictionary = {
     inviteTitle: "Rejoindre cette instance",
     inviteSubtitle: (group: string) => `Tu es invité en tant que ${group}.`,
     inviteInvalid: "Cette invitation a expiré ou a déjà été utilisée.",
+    invitedByNamed: (who: string, by: string) =>
+      `${who}, ${by} t'invite sur Siphon`,
+    invitedBy: (by: string) => `${by} t'invite sur Siphon`,
+    invitedNamed: (who: string) => `${who}, tu es invité sur Siphon`,
     username: "Identifiant",
+    displayName: "Ton nom",
+    displayNamePlaceholder: "ex. Alex",
+    displayNameHint:
+      "Affiché aux autres à côté de tes téléchargements. Facultatif, modifiable ensuite.",
     code: "Code d'authentification",
     codeHint: "Les six chiffres de ton application d'authentification.",
     password: "Mot de passe",
@@ -83,6 +91,14 @@ export const fr: Dictionary = {
     cannotKeepHint:
       "Ton compte ne peut pas conserver de fichiers dans la bibliothèque. Ce téléchargement te sera remis dans le navigateur une fois prêt, puis supprimé du serveur.",
     save: "Enregistrer le fichier",
+    tooLarge: {
+      warn: (size: string, limit: string) =>
+        `Ça représente environ ${size}, au-dessus de ta limite de ${limit}. Le téléchargement sera arrêté si c'est vraiment le cas.`,
+      refused: (size: string, limit: string) =>
+        `Ça pèse ${size}, au-dessus de ta limite de ${limit}.`,
+      quota: (limit: string) => `Cela dépasserait ton quota de ${limit}.`,
+      anyway: "Télécharger quand même",
+    },
     submitMany: (n: number) => `Télécharger (${n})`,
     started: "Téléchargement lancé",
     startedMany: (n: number) => `${n} téléchargements lancés`,
@@ -186,12 +202,33 @@ export const fr: Dictionary = {
     title: "Réglages",
     subtitle: "Téléchargements, stockage et maintenance de yt-dlp.",
 
+    groups: {
+      mine: "Mon compte",
+      instance: "Instance",
+    },
     sections: {
-      general: "Général",
+      profile: "Profil",
+      security: "Sécurité",
+      appearance: "Apparence",
       downloads: "Téléchargements",
       storage: "Stockage",
       engine: "Moteur",
-      accounts: "Comptes",
+      users: "Utilisateurs",
+    },
+
+    profile: {
+      title: "Profil",
+      description:
+        "Ton nom est ce que les autres voient à côté de tes téléchargements et sur les invitations que tu envoies. Ton identifiant reste ce avec quoi tu te connectes.",
+      displayName: "Nom affiché",
+      displayNamePlaceholder: "ex. Alex",
+      displayNameHint:
+        "Laisse vide et rien ne s'affiche à ta place — jamais ton identifiant.",
+      username: "Identifiant",
+      usernameHint:
+        "Choisi à la création du compte. Seul un administrateur peut le changer.",
+      save: "Enregistrer",
+      saved: "Profil mis à jour",
     },
 
     concurrency: {
@@ -260,29 +297,138 @@ export const fr: Dictionary = {
       off: "Désactivé",
     },
 
-    accounts: {
-      title: "Comptes",
-      members: "Membres",
-      membersHint: "Les personnes ayant accès à cette instance.",
-      groups: "Groupes",
-      groupsHint:
-        "Un groupe définit les valeurs par défaut. Ce qui est réglé sur un membre les remplace.",
-      invite: "Inviter quelqu'un",
-      inviteHint:
-        "Le lien reprend l'adresse que tu utilises en ce moment — ouvre Siphon sur l'adresse que tu veux partager avant d'en créer un.",
-      inviteCopied: "Lien d'invitation copié",
-      inviteExpires: (when: string) => `Expire le ${when}`,
-      revoke: "Révoquer",
+    users: {
+      title: "Utilisateurs",
+      tabs: {
+        users: "Utilisateurs",
+        groups: "Groupes",
+        invites: "Invitations",
+        audit: "Activité",
+      },
+      search: "Rechercher par nom, identifiant ou groupe",
+      filterGroup: "Tous les groupes",
+      filterStatus: "Tous les états",
+      status: {
+        active: "Actif",
+        suspended: "Suspendu",
+        locked: "Verrouillé",
+        admins: "Administrateurs",
+      },
+      count: (shown: number, total: number) =>
+        shown === total
+          ? `${total} utilisateur${total > 1 ? "s" : ""}`
+          : `${shown} sur ${total}`,
+      empty: "Aucun compte pour l'instant. Invite quelqu'un pour commencer.",
+      noResults: "Aucun utilisateur ne correspond.",
+      manage: "Gérer",
       you: "toi",
-      lastSeen: (when: string) => `Vu le ${when}`,
+      noName: "Sans nom",
+      lastSeen: (when: string) => `Vu ${when}`,
       neverSignedIn: "Jamais connecté",
-      usage: "Utilisation",
+      suspended: "Suspendu",
+      lockedBySystem: (when: string) =>
+        `Verrouillé par le système jusqu'à ${when} — trop d'échecs de connexion`,
+      unlock: "Déverrouiller",
+      suspend: "Suspendre",
+      unsuspend: "Rétablir l'accès",
+      deleteMember: "Supprimer ce compte",
+      deleteTitle: (name: string) => `Supprimer ${name} ?`,
+      deleteWarning:
+        "Cela supprime le compte et tout ce que contient son dossier. Les téléchargements déjà dans la bibliothèque partagée ne sont pas touchés. C'est irréversible.",
+      deleteConfirm: (name: string) => `Tape ${name} pour confirmer`,
+      deleteAction: "Supprimer définitivement",
+      deleted: "Compte supprimé",
       viewHistory: "Voir l'historique",
-      copyLink: "Copier le lien",
-      permissionsAndUsage: "Permissions et utilisation",
-      copyFailed: "Copie impossible — sélectionne le lien et copie-le à la main.",
+      saved: "Enregistré",
+
+      dialog: {
+        permissions: "Permissions",
+        usage: "Utilisation",
+        group: "Groupe",
+        groupHint:
+          "Le groupe définit les valeurs par défaut. Ce qui est décidé ci-dessous ne vaut que pour cette personne.",
+        close: "Fermer",
+      },
+
+      tri: {
+        inherit: "Hérité",
+        allow: "Autorisé",
+        deny: "Refusé",
+        inheritedFrom: (group: string, value: string) => `${group} : ${value}`,
+        yes: "autorisé",
+        no: "refusé",
+      },
+
+      limits: {
+        quotaBytes: "Quota de stockage",
+        quotaBytesHint: "Taille totale que le dossier de ce compte peut atteindre.",
+        maxFileSizeBytes: "Taille maximale par fichier",
+        maxFileSizeBytesHint:
+          "Un téléchargement au-dessus est arrêté et supprimé. La taille n'est qu'estimée avant de commencer, l'arrêt peut donc survenir en cours de route.",
+        maxConcurrentDownloads: "Téléchargements simultanés",
+        maxConcurrentDownloadsHint:
+          "Nombre de téléchargements que ce compte peut lancer en parallèle, dans la limite de l'instance.",
+        unlimited: "Illimité",
+        custom: "Limite",
+        unitGb: "Go",
+        unitCount: "à la fois",
+      },
+
+      permissions: {
+        canDownload: "Télécharger",
+        canKeepInLibrary: "Conserver des fichiers dans la bibliothèque",
+        canManageFiles: "Renommer, déplacer et supprimer des fichiers",
+        canManageSettings: "Voir les réglages de l'instance",
+        canManageEngine: "Gérer le moteur",
+        canManageEngineHint:
+          "Mettre à jour yt-dlp, changer la concurrence, nettoyer les fichiers temporaires.",
+        canHavePrivateFolder: "Peut avoir un dossier privé",
+        canBrowseWholeLibrary: "Voir toute la bibliothèque",
+        isAdmin: "Administrateur",
+        isAdminHint: "Implique toutes les autres permissions.",
+      },
+
+      groups: {
+        title: "Groupes",
+        hint: "Un groupe définit les valeurs par défaut de ses membres.",
+        members: (n: number) => `${n} utilisateur${n > 1 ? "s" : ""}`,
+        newGroup: "Nouveau groupe",
+        name: "Nom du groupe",
+        builtIn: "Intégré",
+        edit: "Modifier",
+        deleteGroup: "Supprimer ce groupe",
+        adminLocked:
+          "Le groupe Administrateurs conserve ses pouvoirs, pour que l'instance ait toujours quelqu'un capable de la gérer.",
+      },
+
+      invites: {
+        title: "Invitations",
+        hint: "Le lien reprend l'adresse que tu utilises en ce moment — ouvre Siphon sur l'adresse que tu veux partager avant d'en créer une.",
+        forWhom: "Pour qui ?",
+        forWhomPlaceholder: "ex. Alice",
+        forWhomHint:
+          "Affiché à la personne quand elle ouvre le lien, et à toi dans la liste ci-dessous. Facultatif.",
+        uses: "Utilisations",
+        usesHint: "Un même lien peut créer plusieurs comptes.",
+        create: "Créer l'invitation",
+        copied: "Lien d'invitation copié",
+        copyLink: "Copier le lien",
+        copyFailed:
+          "Copie impossible — sélectionne le lien et copie-le à la main.",
+        expires: (when: string) => `Expire ${when}`,
+        usedCount: (used: number, max: number) =>
+          `${used} sur ${max} utilisée${max > 1 ? "s" : ""}`,
+        unnamed: "Sans nom",
+        revoke: "Révoquer",
+        revokeTitle: "Révoquer cette invitation ?",
+        revokeWarning:
+          "Le lien cesse immédiatement de fonctionner. Qui l'a reçu ne peut plus créer de compte. Les comptes déjà créés ne sont pas touchés.",
+        revoked: "Invitation révoquée",
+        empty: "Aucune invitation en cours.",
+      },
+
       diskUsed: "Sur le disque",
-      wholeLibrary: "Bibliothèque entière",
+      wholeLibrary: "Toute la bibliothèque",
       fileCount: "Fichiers",
       downloadCount: "Téléchargements",
       fetched: "Récupéré",
@@ -290,31 +436,6 @@ export const fr: Dictionary = {
       failedCount: "Échoués",
       lastDownload: "Dernier téléchargement",
       never: "Jamais",
-      newGroup: "Nouveau groupe",
-      groupName: "Nom du groupe",
-      inherited: "Du groupe",
-      deleteMember: "Retirer ce membre",
-      suspend: "Suspendre",
-      lockedBySystem: (when: string) =>
-        `Verrouillé par le système jusqu'à ${when} — trop d'échecs de connexion`,
-      unlock: "Déverrouiller",
-      unsuspend: "Rétablir l'accès",
-      suspended: "Suspendu",
-      deleteTitle: (name: string) => `Supprimer ${name} ?`,
-      deleteWarning:
-        "Le compte et tout le contenu de son dossier seront supprimés. Les téléchargements déjà dans la bibliothèque commune ne sont pas touchés. C'est irréversible.",
-      deleteConfirm: (name: string) => `Saisis ${name} pour confirmer`,
-      deleteAction: "Supprimer définitivement",
-      deleted: "Compte supprimé",
-      permissions: {
-        canDownload: "Télécharger",
-        canKeepInLibrary: "Conserver les fichiers dans la bibliothèque",
-        canManageFiles: "Renommer, déplacer et supprimer des fichiers",
-        canManageSettings: "Modifier les réglages de l'application",
-        canHavePrivateFolder: "Peut avoir un dossier privé",
-        canBrowseWholeLibrary: "Voir toute la bibliothèque",
-        isAdmin: "Administrateur",
-      },
     },
 
     privacy: {
@@ -445,6 +566,9 @@ export const fr: Dictionary = {
       `Trop de tentatives échouées. Ce compte est verrouillé jusqu'à ${when}.`,
     account_suspended:
       "Ce compte a été suspendu par un administrateur.",
+    file_too_large:
+      "Ce téléchargement dépasse la taille autorisée pour ton compte.",
+    quota_exceeded: "Cela dépasserait ton quota de stockage.",
     csrf_failed:
       "Cette requête n'a pas pu être vérifiée. Recharge la page et réessaie.",
     account_locked:
@@ -480,6 +604,10 @@ export const fr: Dictionary = {
     bot_check:
       "La plateforme demande une vérification humaine. Réessaie plus tard.",
     no_format: "Aucun format ne correspond à la qualité demandée.",
+    file_too_large:
+      "Arrêté : ce téléchargement dépassait la taille autorisée pour ton compte.",
+    quota_exceeded:
+      "Arrêté : ton quota de stockage est plein. Libère de la place et réessaie.",
     network: "Erreur réseau en contactant la plateforme.",
     ffmpeg_missing:
       "ffmpeg est introuvable — il est nécessaire pour fusionner les pistes.",

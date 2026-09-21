@@ -5,6 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { DownloadJob, WsServerMessage } from "@app/shared";
 import { wsUrl } from "@/lib/api";
+import { useAuthState } from "@/lib/hooks";
 import { useT } from "@/components/i18n-provider";
 import { isRickRoll } from "@/lib/easter-eggs";
 
@@ -24,8 +25,15 @@ export function WsProvider({ children }: { children: ReactNode }) {
   }, [t]);
   const qc = useQueryClient();
   const statusRef = useRef<Map<string, string>>(new Map());
+  // Nothing to listen to before there is a session. The socket sits above the
+  // sign-in screen, so it used to open as an anonymous visitor: the server
+  // refused the upgrade, the browser logged "bad response from server", and
+  // the retry below turned that into one error every 1.5 seconds.
+  const { data: auth } = useAuthState();
+  const signedIn = Boolean(auth?.user);
 
   useEffect(() => {
+    if (!signedIn) return;
     let socket: WebSocket | null = null;
     let closed = false;
     let retry: ReturnType<typeof setTimeout>;
@@ -104,7 +112,7 @@ export function WsProvider({ children }: { children: ReactNode }) {
       clearTimeout(retry);
       socket?.close();
     };
-  }, [qc]);
+  }, [qc, signedIn]);
 
   return <>{children}</>;
 }

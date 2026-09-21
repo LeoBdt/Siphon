@@ -6,10 +6,22 @@
 # ---------------------------------------------------------------------------
 FROM node:24-bookworm-slim
 
+# Set by BuildKit for the image being built — amd64 or arm64 here.
+ARG TARGETARCH
+
 # ffmpeg (media merge/extract) + yt-dlp standalone linux binary (no python dep).
+#
+# The asset has to match the architecture: yt-dlp_linux is x86-64 only, and on
+# an arm64 image it fails with "rosetta error: failed to open elf" — which reads
+# like a Docker problem and is really a binary for the wrong machine.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ffmpeg ca-certificates curl \
-  && curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux \
+  && case "$TARGETARCH" in \
+       amd64) YTDLP_ASSET=yt-dlp_linux ;; \
+       arm64) YTDLP_ASSET=yt-dlp_linux_aarch64 ;; \
+       *) echo "unsupported architecture: $TARGETARCH" >&2; exit 1 ;; \
+     esac \
+  && curl -fL "https://github.com/yt-dlp/yt-dlp/releases/latest/download/${YTDLP_ASSET}" \
        -o /usr/local/bin/yt-dlp \
   && chmod a+rx /usr/local/bin/yt-dlp \
   # yt-dlp belongs to the runtime user so it can update itself: `yt-dlp -U`

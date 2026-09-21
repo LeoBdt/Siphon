@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/select";
 import { useAuthState, useUsers, type JobScope } from "@/lib/hooks";
 import { useI18n } from "@/components/i18n-provider";
+import { personName } from "@/lib/people";
 
 /**
  * Serialised form of a scope, so it can live in a `useState` and in a Select
@@ -37,7 +38,8 @@ export function useJobAuthor(): (userId: string | null) => string | null {
   return (userId) => {
     if (!isAdmin || !userId) return null;
     if (userId === auth?.user?.id) return null;
-    return users?.find((u) => u.id === userId)?.username ?? t.common.unknown;
+    const user = users?.find((u) => u.id === userId);
+    return user ? personName(user) : t.common.unknown;
   };
 }
 
@@ -69,7 +71,8 @@ export function JobScopeSelect({
   const labelFor = (key: ScopeKey) => {
     if (key === "all") return t.history.scope.all;
     if (key === "mine") return t.history.scope.mine;
-    return users?.find((u) => u.id === key)?.username ?? t.common.unknown;
+    const user = users?.find((u) => u.id === key);
+    return user ? personName(user) : t.common.unknown;
   };
 
   return (
@@ -84,7 +87,7 @@ export function JobScopeSelect({
           ?.filter((u) => u.id !== auth?.user?.id)
           .map((u) => (
             <SelectItem key={u.id} value={u.id}>
-              {u.username}
+              {personName(u)}
             </SelectItem>
           ))}
       </SelectContent>

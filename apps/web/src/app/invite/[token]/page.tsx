@@ -32,7 +32,11 @@ export default function InvitePage({
   });
 
   const accept = useMutation({
-    mutationFn: (body: { username: string; password: string }) =>
+    mutationFn: (body: {
+      username: string;
+      password: string;
+      displayName?: string;
+    }) =>
       apiFetch<User>(`/api/auth/invite/${token}`, {
         method: "POST",
         body: JSON.stringify(body),
@@ -55,10 +59,26 @@ export default function InvitePage({
     );
   }
 
+  // Four ways this can read, and none of them invents a name: addressed to
+  // someone by an administrator who has one, by one who has not, to nobody in
+  // particular, or to nobody by nobody — in which case the screen falls back
+  // to its own title.
+  const { label, invitedBy } = preview.data;
+  const greeting =
+    label && invitedBy
+      ? t.auth.invitedByNamed(label, invitedBy)
+      : invitedBy
+        ? t.auth.invitedBy(invitedBy)
+        : label
+          ? t.auth.invitedNamed(label)
+          : null;
+
   return (
     <AuthScreen
       mode="invite"
       groupName={preview.data.groupName}
+      greeting={greeting}
+      invitedName={label}
       pending={accept.isPending}
       error={accept.error ? errorMessage(accept.error) : null}
       onSubmit={(c) => accept.mutate(c)}

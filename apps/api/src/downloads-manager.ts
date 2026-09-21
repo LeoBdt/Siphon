@@ -12,7 +12,11 @@ import {
   CONCURRENCY_MIN,
   QUALITY_PRESETS,
 } from "@app/shared";
+import { rm } from "node:fs/promises";
+import type { Permissions } from "@app/shared";
 import { config } from "./config.js";
+import { dirUsage } from "./lib/dir-size.js";
+import { checkBeforeDownload, checkWhileRunning, selectionFor } from "./lib/limits.js";
 import {
   deleteJob,
   getJob,
@@ -63,8 +67,68 @@ const active = new Map<string, RunDownloadHandle>();
  */
 const canceled = new Set<string>();
 
+/**
+ * Jobs stopped by a size or quota limit, and why.
+ *
+ * Held apart from `canceled` although both kill the process: one is a decision
+ * the person made, the other is one made for them, and the history has to be
+ * able to tell them apart.
+ */
+const overLimit = new Map<string, "file_too_large" | "quota_exceeded">();
+
+/**
+ * A download refused before it started, because of this account's limits.
+ *
+ * Carries the numbers rather than a sentence: the interface writes the
+ * message, in the language it is set to, and needs the figures to say "2.3 GB,
+ * your limit is 1 GB" instead of something vague.
+ */
+export class LimitError extends Error {
+  constructor(
+    readonly code: "file_too_large" | "quota_exceeded",
+    readonly limitBytes: number,
+    readonly estimatedBytes: number | null,
+    /**
+     * Whether going ahead anyway is on offer.
+     *
+     * True only when the verdict rested on an estimate. A size yt-dlp
+     * measured is not a matter of opinion, and a button that starts a
+     * download the server kills moments later is not a choice.
+     */
+    readonly overridable: boolean,
+  ) {
+    super(code);
+    this.name = "LimitError";
+  }
+}
+
 function emit(job: DownloadJob | null) {
   if (job) jobEvents.emitUpdate(job);
+}
+
+/**
+ * The limits applying to whoever started a job, and what their folder already
+ * holds.
+ *
+ * Null when nothing constrains them, so the hot path — a progress line, five
+ * times a second — does no work at all in the common case. The disk figure is
+ * the one taken when the download starts: a file added in the meantime is
+ * caught by the next download rather than by re-walking the tree constantly.
+ */
+async function limitsFor(
+  userId: string | null,
+): Promise<{ permissions: Permissions; usedBytes: number } | null> {
+  if (!userId) return null;
+  const user = getUser(userId);
+  if (!user) return null;
+  const { maxFileSizeBytes, quotaBytes } = user.effective;
+  if (maxFileSizeBytes == null && quotaBytes == null) return null;
+  // Only worth measuring when a quota actually applies.
+  const usedBytes =
+    quotaBytes == null
+      ? 0
+      : (await dirUsage(join(config.rootDir, "users", user.libraryDir))).bytes;
+  return { permissions: user.effective, usedBytes };
 }
 
 function youtubeThumb(id: string): string | null {
@@ -75,9 +139,50 @@ function youtubeThumb(id: string): string | null {
 // Running a single download
 // ---------------------------------------------------------------------------
 
-function runJob(jobId: string): Promise<void> {
+/**
+ * A download stopped for breaking an account's limits.
+ *
+ * Distinct from a cancel: the person did not ask, so the job has to say what
+ * happened and why — it lands in the history with a reason, rather than
+ * looking like something they stopped themselves.
+ */
+function failForLimit(
+  jobId: string,
+  code: "file_too_large" | "quota_exceeded",
+): void {
+  overLimit.set(jobId, code);
+  const handle = active.get(jobId);
+  handle?.cancel();
+  emit(
+    updateJob(jobId, {
+      status: "error",
+      errorCode: code,
+      errorMessage: null,
+      speedBytesPerSec: null,
+      etaSeconds: null,
+      phase: null,
+    }),
+  );
+  // Whatever was written so far is dead weight: nobody asked for a partial
+  // file, and leaving it would count against the very quota that stopped it.
+  void discardArtifacts(jobId);
+}
+
+/** Remove what a stopped download left behind, in scratch space and in place. */
+async function discardArtifacts(jobId: string): Promise<void> {
   const job = getJob(jobId);
-  if (!job || job.status === "canceled") return Promise.resolve();
+  await rm(join(config.tmpDir, "direct", jobId), {
+    recursive: true,
+    force: true,
+  }).catch(() => {});
+  if (job?.outputFile) {
+    await rm(job.outputFile, { force: true }).catch(() => {});
+  }
+}
+
+async function runJob(jobId: string): Promise<void> {
+  const job = getJob(jobId);
+  if (!job || job.status === "canceled") return;
 
   // Direct downloads land in scratch space under the job id: they are never
   // part of the library, and the folder is removed once the file is fetched
@@ -89,6 +194,9 @@ function runJob(jobId: string): Promise<void> {
         // member writes inside their folder however the queue later runs it.
         resolveInsideRoot(job.destPath, libraryRootFor(job.userId));
   const fmt = getJobFormat(jobId);
+  // Snapshot of what this account may do, taken once: re-reading it on every
+  // progress line would mean a database round trip five times a second.
+  const limits = await limitsFor(job.userId);
   emit(
     updateJob(jobId, {
       status: "downloading",
@@ -110,7 +218,23 @@ function runJob(jobId: string): Promise<void> {
       // A cancelled job is settled. yt-dlp may still emit a line or two while
       // it is being torn down, and writing one through would put the card back
       // to "downloading" a moment after the user stopped it.
-      if (canceled.has(jobId)) return;
+      if (canceled.has(jobId) || overLimit.has(jobId)) return;
+
+      // The limits that actually enforce: these are measured bytes, not the
+      // estimate the request was judged on before it started.
+      if (limits) {
+        const verdict = checkWhileRunning({
+          permissions: limits.permissions,
+          downloadedBytes: p.downloadedBytes ?? 0,
+          totalBytes: p.totalBytes ?? null,
+          usedBytesAtStart: limits.usedBytes,
+        });
+        if (verdict) {
+          failForLimit(jobId, verdict);
+          return;
+        }
+      }
+
       const isProcessing = p.phase === "merging" || p.phase === "converting";
       if (isProcessing) {
         emit(updateJob(jobId, { status: "processing", phase: p.phase }));
@@ -136,9 +260,9 @@ function runJob(jobId: string): Promise<void> {
 
   return handle.promise
     .then(({ outputFile }) => {
-      // Cancelled just as it finished: honour the decision rather than
-      // announcing a file the user stopped asking for.
-      if (canceled.has(jobId)) return;
+      // Cancelled or stopped just as it finished: honour that rather than
+      // announcing a file the user is not getting.
+      if (canceled.has(jobId) || overLimit.has(jobId)) return;
       let fileSizeBytes: number | null = null;
       if (outputFile) {
         try {
@@ -160,6 +284,10 @@ function runJob(jobId: string): Promise<void> {
       );
     })
     .catch((err: Error) => {
+      // Stopped by a limit: failForLimit already recorded why. The kill it
+      // triggered arrives here as a cancellation, and letting that through
+      // would replace the reason with "canceled".
+      if (overLimit.has(jobId)) return;
       if (err.message === "__CANCELED__" || canceled.has(jobId)) {
         // Already flipped to canceled when the user asked; this only clears
         // the readouts the card would otherwise keep showing.
@@ -187,6 +315,7 @@ function runJob(jobId: string): Promise<void> {
     .finally(() => {
       active.delete(jobId);
       canceled.delete(jobId);
+      overLimit.delete(jobId);
       const parentId = getJob(jobId)?.playlistId;
       if (parentId) recomputeParent(parentId);
     });
@@ -276,6 +405,33 @@ export async function createDownload(
   const maxFps = req.advanced?.maxFps ?? null;
 
   const probe = await probeInfo(req.url);
+
+  // Judged before anything is fetched. A playlist is probed flat, so there are
+  // no formats to weigh — its children are each checked as they run.
+  const limits = await limitsFor(userId);
+  if (limits && !probe.info.isPlaylist) {
+    const verdict = checkBeforeDownload({
+      permissions: limits.permissions,
+      formats: probe.formats,
+      selection: selectionFor(req.preset, {
+        maxHeight: maxHeight ?? null,
+        maxFps: maxFps ?? null,
+      }),
+      usedBytes: limits.usedBytes,
+    });
+    // A warning is the caller's to act on: the estimate may be wrong, so the
+    // interface says so and offers to go ahead. Sending the flag back is what
+    // that consent looks like — and it cannot buy anything a measurement
+    // already refused, since a refusal never becomes a warning.
+    if (verdict.kind === "refused" || (verdict.kind === "warn" && !req.acceptEstimate)) {
+      throw new LimitError(
+        verdict.code,
+        verdict.limit,
+        verdict.estimated ?? null,
+        verdict.kind === "warn",
+      );
+    }
+  }
 
   if (probe.info.isPlaylist) {
     // Restrict to the selected entry URLs when the UI provided a selection.
