@@ -33,7 +33,7 @@ you.
 | **Playlists and channels** | Every entry becomes its own tracked job under a parent, and you choose which titles to fetch before starting. |
 | **Live progress** | Progress, speed and ETA pushed over WebSocket, including the current phase (video, audio, merge, convert). |
 | **Library** | A sandboxed file explorer: breadcrumbs, create and rename, drag and drop, context menu, download a file or a whole folder as a ZIP. |
-| **Accounts** | Invitations rather than accounts made on someone's behalf, permissions defaulting from a group and overridable per person, optional two-factor authentication, an audit log, and lockout after repeated failed sign-ins. |
+| **Accounts** | Invitations rather than accounts made on someone's behalf — named, reusable for several people, and greeting the invitee by name. Permissions default from a group and are overridable per person, with storage quotas and a maximum file size. Optional two-factor authentication, an audit log, and lockout after repeated failed sign-ins. |
 | **Per-member scope** | A confined member works in a folder of their own and sees only their own queue and history; an administrator can widen the view and read each account's usage. |
 | **Built-in playback** | Persistent audio bar with a remembered volume, plus a video player with fullscreen. |
 | **History** | Persisted in SQLite, with search, filters, retry and delete. |
@@ -181,7 +181,7 @@ message in the active language.
 |---|---|
 | Downloads | `/api/downloads` (list, create), `/api/downloads/:id` (read, delete, `/retry`, `/cancel`, `/file`), `/api/downloads/info?url=` |
 | Files | `/api/files` (list, move, delete), `/api/files/folder`, `/api/files/stream?path=`, `/api/files/download?path=` |
-| Accounts | `/api/auth/*` (state, setup, login, logout, invitations, TOTP), `/api/admin/users`, `/api/admin/groups`, `/api/admin/invites`, `/api/admin/audit` |
+| Accounts | `/api/auth/*` (state, setup, login, logout, profile, invitations, TOTP), `/api/admin/users`, `/api/admin/groups`, `/api/admin/invites`, `/api/admin/audit` |
 | System | `/api/settings`, `/api/system/disk`, `/api/system/ytdlp` (read, `/update`), `/api/system/cleanup` |
 | Live | `WS /ws` — job updates, scoped to what the connection is allowed to see |
 
