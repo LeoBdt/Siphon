@@ -1,0 +1,25 @@
+# Build the images from this source tree instead of pulling the published ones.
+#
+# Only useful with the repository checked out — for development, or to run a
+# change that has not been released yet:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+#
+# Kept apart from docker-compose.yml so that a deployment which only downloaded
+# that one file can never fall back to building something it does not have.
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+
+  proxy:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile

@@ -13,12 +13,14 @@
 
 services:
   api:
-    # Published by CI. `docker compose pull` fetches it; `up -d --build`
-    # rebuilds from source instead, for local work or an unreleased change.
+    # Published by CI, for linux/amd64 and linux/arm64.
+    #
+    # No `build:` here on purpose. With one, a pull that fails for any reason —
+    # a missing architecture, a network hiccup — makes Compose quietly try to
+    # build instead, and the error you get is about a source tree you never
+    # downloaded rather than about the pull. Building from source is opt-in,
+    # through docker-compose.build.yml.
     image: ghcr.io/leobdt/siphon-api:latest
-    build:
-      context: .
-      dockerfile: apps/api/Dockerfile
     restart: unless-stopped
     environment:
       MAX_CONCURRENT_DOWNLOADS: ${MAX_CONCURRENT_DOWNLOADS:-2}
@@ -36,9 +38,6 @@ services:
 
   web:
     image: ghcr.io/leobdt/siphon-web:latest
-    build:
-      context: .
-      dockerfile: apps/web/Dockerfile
     restart: unless-stopped
     depends_on:
       api:
@@ -50,9 +49,6 @@ services:
     # Carries its own routing config, so this compose file needs nothing else
     # from the repository — downloading it on its own is enough to deploy.
     image: ghcr.io/leobdt/siphon-proxy:latest
-    build:
-      context: .
-      dockerfile: deploy/Dockerfile
     restart: unless-stopped
     ports:
       - "${SIPHON_BIND:-0.0.0.0}:${SIPHON_PORT:-8080}:80"

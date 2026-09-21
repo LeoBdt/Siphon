@@ -66,8 +66,8 @@ docker compose up -d
 
 Siphon is then on `http://<host>:8080`. The compose file is self-contained: all
 three images carry what they need, so there is nothing else to download and
-nothing to build. Do **not** pass `--build` here — without the source tree there
-is nothing to build from.
+nothing to build. Images are published for `linux/amd64` and `linux/arm64`, so
+an Apple Silicon Mac or an ARM server pulls the same way an x86 one does.
 
 The first person to open it creates the administrator account. There is no
 default password to change, and no window during which one exists.
@@ -112,8 +112,12 @@ sudo mkdir -p /opt/siphon && sudo chown "$USER:$USER" /opt/siphon
 git clone https://github.com/LeoBdt/Siphon.git /opt/siphon
 cd /opt/siphon
 mkdir -p data && sudo chown -R 1000:1000 data
-docker compose up -d --build
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
+
+Building is opt-in through that second file: `docker-compose.yml` alone only
+ever pulls, so a deployment that downloaded nothing else cannot be told to build
+a source tree it does not have.
 
 ## Security
 
