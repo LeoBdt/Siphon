@@ -2,6 +2,15 @@ import type { ReleaseCheck } from "@app/shared";
 
 const REPO = "LeoBdt/Siphon";
 const ENDPOINT = `https://api.github.com/repos/${REPO}/releases/latest`;
+/**
+ * Fallback listing, newest first.
+ *
+ * `/releases/latest` has an opinion of its own: it ignores anything flagged as
+ * a pre-release and answers 404, which the app could only report as "nothing
+ * has ever been published" — while two releases sat on the repository. A
+ * published release is a published release, so the list settles it.
+ */
+const LIST_ENDPOINT = `https://api.github.com/repos/${REPO}/releases?per_page=10`;
 
 /**
  * Compare two `MAJOR.MINOR.PATCH` strings.
@@ -26,6 +35,53 @@ export function compareVersions(a: string, b: string): number {
   return 0;
 }
 
+interface GithubRelease {
+  tag_name?: string;
+  html_url?: string;
+  published_at?: string;
+  draft?: boolean;
+}
+
+const GITHUB_HEADERS = {
+  accept: "application/vnd.github+json",
+  // GitHub asks for one and answers 403 without it.
+  "user-agent": "siphon",
+};
+
+/**
+ * One GitHub call, with its failures expressed as values.
+ *
+ * "missing" is kept apart from "error" because a 404 is an answer — there is
+ * no such resource — while a timeout means we simply do not know.
+ */
+type Fetched<T> =
+  | { kind: "ok"; body: T }
+  | { kind: "missing" }
+  | { kind: "error"; error: "unreachable" | "rate_limited" };
+
+async function get<T>(url: string): Promise<Fetched<T>> {
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      headers: GITHUB_HEADERS,
+      // A settings page should not hang on a slow network.
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch {
+    return { kind: "error", error: "unreachable" };
+  }
+  if (res.status === 404) return { kind: "missing" };
+  if (res.status === 403 || res.status === 429) {
+    return { kind: "error", error: "rate_limited" };
+  }
+  if (!res.ok) return { kind: "error", error: "unreachable" };
+  try {
+    return { kind: "ok", body: (await res.json()) as T };
+  } catch {
+    return { kind: "error", error: "unreachable" };
+  }
+}
+
 /**
  * Ask GitHub whether a newer release exists.
  *
@@ -46,38 +102,24 @@ export async function checkLatestRelease(
     error: null,
   };
 
-  let res: Response;
-  try {
-    res = await fetch(ENDPOINT, {
-      headers: {
-        accept: "application/vnd.github+json",
-        // GitHub asks for one and answers 403 without it.
-        "user-agent": "siphon",
-      },
-      // A settings page should not hang on a slow network.
-      signal: AbortSignal.timeout(8000),
-    });
-  } catch {
-    return { ...base, error: "unreachable" };
+  const asked = await get<GithubRelease>(ENDPOINT);
+  if (asked.kind === "error") return { ...base, error: asked.error };
+
+  // A 404 on /releases/latest does not mean there is nothing published: it is
+  // also the answer when every release is flagged as a pre-release. Ask for
+  // the list before concluding.
+  let body = asked.kind === "ok" ? asked.body : null;
+  if (!body?.tag_name) {
+    const listed = await get<GithubRelease[]>(LIST_ENDPOINT);
+    if (listed.kind === "error") return { ...base, error: listed.error };
+    body =
+      listed.kind === "ok"
+        ? (listed.body.find((r) => !r.draft && r.tag_name) ?? null)
+        : null;
   }
 
-  // 404 means the repository has no published release yet, which is not a
-  // failure — it is the honest state of a project that has not tagged one.
-  if (res.status === 404) return { ...base, error: "no_releases" };
-  if (res.status === 403 || res.status === 429) {
-    return { ...base, error: "rate_limited" };
-  }
-  if (!res.ok) return { ...base, error: "unreachable" };
-
-  let body: { tag_name?: string; html_url?: string; published_at?: string };
-  try {
-    body = (await res.json()) as typeof body;
-  } catch {
-    return { ...base, error: "unreachable" };
-  }
-
-  const tag = body.tag_name?.trim();
-  if (!tag) return { ...base, error: "no_releases" };
+  const tag = body?.tag_name?.trim();
+  if (!tag || !body) return { ...base, error: "no_releases" };
 
   return {
     ...base,

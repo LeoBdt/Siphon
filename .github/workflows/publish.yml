@@ -131,13 +131,20 @@ jobs:
 
           # Idempotent, so re-running this job repairs a release rather than
           # failing on one that already exists.
+          # --latest and --prerelease=false are not decoration: a release left
+          # marked as a pre-release is excluded from /releases/latest, which
+          # answers 404 — and the in-app check then reports, accurately and
+          # uselessly, that nothing has ever been published.
           if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
             gh release edit "${GITHUB_REF_NAME}" \
               --title "Siphon ${GITHUB_REF_NAME#v}" \
-              --notes-file "${RUNNER_TEMP}/notes.md"
+              --notes-file "${RUNNER_TEMP}/notes.md" \
+              --prerelease=false \
+              --latest
           else
             gh release create "${GITHUB_REF_NAME}" \
               --title "Siphon ${GITHUB_REF_NAME#v}" \
               --notes-file "${RUNNER_TEMP}/notes.md" \
+              --latest \
               --verify-tag
           fi
