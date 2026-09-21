@@ -15,8 +15,12 @@ export const en = {
   },
 
   auth: {
-    signInTitle: "Sign in",
-    signInSubtitle: "This instance is private.",
+    // "Welcome back", not "Welcome": the first-run screen owns that word, and
+    // the difference between creating an instance and returning to one is
+    // worth keeping. The subtitle says what to do rather than who is kept out
+    // — whoever is reading it has an account.
+    signInTitle: "Welcome back",
+    signInSubtitle: "Sign in to reach your library.",
     setupTitle: "Welcome to Siphon",
     setupSubtitle:
       "Create the administrator account. There is no default password — you choose it now.",

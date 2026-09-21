@@ -13,8 +13,8 @@ export const fr: Dictionary = {
   },
 
   auth: {
-    signInTitle: "Connexion",
-    signInSubtitle: "Cette instance est privée.",
+    signInTitle: "Bon retour",
+    signInSubtitle: "Connecte-toi pour retrouver ta bibliothèque.",
     setupTitle: "Bienvenue sur Siphon",
     setupSubtitle:
       "Crée le compte administrateur. Il n'y a pas de mot de passe par défaut — tu le choisis maintenant.",
