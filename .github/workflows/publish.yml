@@ -83,3 +83,26 @@ jobs:
           # Layer cache kept in the registry: a rebuild only redoes what changed.
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # A tag alone does not make a release, and the in-app update check asks
+  # GitHub for the latest *release*. Without this, pushing a tag built the
+  # images and left the check reporting that nothing had ever been published.
+  release:
+    needs: publish
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: the notes are generated from the commits since the
+          # previous tag, and a shallow clone has none of them.
+          fetch-depth: 0
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "Siphon ${GITHUB_REF_NAME#v}" \
+            --generate-notes \
+            --verify-tag
