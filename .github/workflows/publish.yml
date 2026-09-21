@@ -99,11 +99,14 @@ jobs:
           # Full history: the notes are generated from the commits since the
           # previous tag, and a shallow clone has none of them.
           fetch-depth: 0
-      # Notes written from the commit subjects, not --generate-notes: that
-      # lists merged pull requests, and work lands here by pushing straight to
-      # main — so it produced a release whose entire body was a compare link.
-      # Subjects are the release notes, which is one more reason to write them
-      # for a reader.
+      # Notes written from the commits, not --generate-notes: that lists merged
+      # pull requests, and work lands here by pushing straight to main — so it
+      # produced a release whose entire body was a compare link.
+      #
+      # Each commit contributes its subject as a heading and its body beneath,
+      # because a subject alone cannot say everything a version changed. Commit
+      # messages are the release notes here; they are written for whoever is
+      # deciding whether to pull the new images.
       - env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -113,14 +116,16 @@ jobs:
             if [ -n "$previous" ]; then
               echo "## Changes since ${previous}"
               echo
-              git log --no-merges --format='- %s' "${previous}..${GITHUB_REF_NAME}"
-              echo
+              # --reverse: oldest first, so the notes read in the order the
+              # work happened rather than backwards.
+              git log --no-merges --reverse --format='### %s%n%n%b' \
+                "${previous}..${GITHUB_REF_NAME}"
               echo "**Full changelog**: https://github.com/${REPO}/compare/${previous}...${GITHUB_REF_NAME}"
             else
               # First release: everything there is.
               echo "## Changes"
               echo
-              git log --no-merges --format='- %s' "${GITHUB_REF_NAME}"
+              git log --no-merges --reverse --format='### %s%n%n%b' "${GITHUB_REF_NAME}"
             fi
           } > "${RUNNER_TEMP}/notes.md"
 
