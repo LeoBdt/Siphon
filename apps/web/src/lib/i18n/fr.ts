@@ -80,6 +80,8 @@ export const fr: Dictionary = {
     retentionLibraryHint: "Conservé sur le serveur, visible dans Fichiers.",
     retentionDirectHint:
       "Envoyé à ton navigateur, puis supprimé du serveur. À récupérer sous un jour.",
+    cannotKeepHint:
+      "Ton compte ne peut pas conserver de fichiers dans la bibliothèque. Ce téléchargement te sera remis dans le navigateur une fois prêt, puis supprimé du serveur.",
     save: "Enregistrer le fichier",
     submitMany: (n: number) => `Télécharger (${n})`,
     started: "Téléchargement lancé",
@@ -222,7 +224,7 @@ export const fr: Dictionary = {
     update: {
       title: "Mises à jour de Siphon",
       description:
-        "Demande à GitHub si une version plus récente existe. Rien n'est envoyé, et rien ne quitte la machine tant que tu n'as pas cliqué.",
+        "Vérifie sur GitHub s'il existe une version plus récente.",
       installed: "Version installée",
       check: "Vérifier les mises à jour",
       upToDate: "Tu es sur la dernière version publiée.",
@@ -244,6 +246,9 @@ export const fr: Dictionary = {
       action: "Vérifier les mises à jour",
       checked: "yt-dlp vérifié",
       failed: "Mise à jour de yt-dlp échouée",
+      alreadyCurrent: (v: string) => `Déjà à jour — ${v}`,
+      updatedTo: (from: string, to: string) => `Mis à jour — ${from} → ${to}`,
+      rawOutput: "Sortie de yt-dlp",
       stale: "yt-dlp n'a pas été vérifié depuis longtemps. Un moteur périmé est la cause habituelle des téléchargements qui se mettent à échouer.",
       lastCheckLabel: "Dernier contrôle",
       lastChecked: (when: string) => when,
@@ -432,6 +437,7 @@ export const fr: Dictionary = {
     downloadSelected: "Télécharger la sélection",
     deleteSelected: "Supprimer la sélection",
     downloadingHere: "Téléchargement",
+    almostThere: "Finalisation",
   },
 
   apiErrors: {

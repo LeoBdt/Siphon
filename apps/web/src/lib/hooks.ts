@@ -26,7 +26,7 @@ import type {
   YtdlpInfo,
   YtdlpUpdateResult,
 } from "@app/shared";
-import { apiFetch, apiUrl } from "./api";
+import { apiFetch } from "./api";
 
 // ---------------------------------------------------------------------------
 // Downloads
@@ -332,13 +332,13 @@ export function useSaveUser() {
 export function useDeleteUser() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      fetch(apiUrl(`/api/admin/users/${id}`), {
-        method: "DELETE",
-        credentials: "include",
-      }).then((r) => {
-        if (!r.ok && r.status !== 204) throw new Error("Delete failed");
-      }),
+    // Through apiFetch, like every other call: a bare fetch sends no CSRF
+    // header, and the server refuses a state-changing request without one —
+    // which is why deleting a member answered 403 however many times it was
+    // tried. See the same fix on useDeleteJob.
+    mutationFn: (id: string) => apiFetch(`/api/admin/users/${id}`, {
+      method: "DELETE",
+    }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["users"] });
       qc.invalidateQueries({ queryKey: ["groups"] });
@@ -390,13 +390,10 @@ export function useCreateInvite() {
 export function useRevokeInvite() {
   const qc = useQueryClient();
   return useMutation({
+    // Same as useDeleteUser above: without apiFetch there is no CSRF header,
+    // and revoking an invitation always came back 403.
     mutationFn: (token: string) =>
-      fetch(apiUrl(`/api/admin/invites/${token}`), {
-        method: "DELETE",
-        credentials: "include",
-      }).then((r) => {
-        if (!r.ok && r.status !== 204) throw new Error("Revoke failed");
-      }),
+      apiFetch(`/api/admin/invites/${token}`, { method: "DELETE" }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["invites"] }),
   });
 }

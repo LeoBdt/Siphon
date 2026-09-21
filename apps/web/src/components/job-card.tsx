@@ -27,36 +27,11 @@ import { useDeleteJob, useJobAction } from "@/lib/hooks";
 import { apiUrl } from "@/lib/api";
 import { useI18n } from "@/components/i18n-provider";
 import type { Dictionary } from "@/lib/i18n";
+import { ACTIVE_STATUSES, phaseLabel } from "@/lib/job-phase";
 import { EASE_OUT, DUR } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
-const ACTIVE: DownloadStatus[] = [
-  "queued",
-  "fetching-info",
-  "downloading",
-  "processing",
-];
-
-function phaseLabel(job: DownloadJob, t: Dictionary): string {
-  switch (job.status) {
-    case "queued":
-      return t.job.queued;
-    case "fetching-info":
-      return t.job.analyzing;
-    case "downloading":
-      return job.phase === "downloading-audio"
-        ? t.job.downloadingAudio
-        : t.job.downloadingVideo;
-    case "processing":
-      return job.phase === "merging" ? t.job.merging : t.job.converting;
-    case "completed":
-      return t.job.completed;
-    case "error":
-      return t.job.failed;
-    case "canceled":
-      return t.job.canceled;
-  }
-}
+const ACTIVE = ACTIVE_STATUSES;
 
 /** 0 = download, 1 = processing, 2 = done. -1 for not-started/failed. */
 function stepIndex(status: DownloadStatus): number {

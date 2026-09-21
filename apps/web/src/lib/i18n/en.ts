@@ -80,6 +80,9 @@ export const en = {
     retentionLibraryHint: "Kept on the server, browsable in Files.",
     retentionDirectHint:
       "Sent to your browser, then removed from the server. Collect it within a day.",
+    /** Shown to someone who may not keep files, in place of the choice. */
+    cannotKeepHint:
+      "Your account cannot keep files in the library. This download will be handed to your browser once it is ready, then removed from the server.",
     save: "Save file",
     submitMany: (n: number) => `Download (${n})`,
     started: "Download started",
@@ -222,7 +225,10 @@ export const en = {
     update: {
       title: "Siphon updates",
       description:
-        "Asks GitHub whether a newer release exists. Nothing is sent, and nothing leaves the machine until you press the button.",
+        // Deliberately short: the previous wording spent three clauses
+        // promising that nothing left the machine, which only made people
+        // wonder what might.
+        "Checks GitHub for a newer release.",
       installed: "Installed version",
       check: "Check for updates",
       upToDate: "You are running the latest release.",
@@ -242,6 +248,10 @@ export const en = {
       action: "Check for updates",
       checked: "yt-dlp checked",
       failed: "yt-dlp update failed",
+      /** The verdict, decided server-side by comparing versions. */
+      alreadyCurrent: (v: string) => `Already up to date — ${v}`,
+      updatedTo: (from: string, to: string) => `Updated — ${from} → ${to}`,
+      rawOutput: "yt-dlp output",
       stale: "yt-dlp has not been checked in a while. An outdated engine is the usual reason downloads start failing.",
       lastCheckLabel: "Last check",
       lastChecked: (when: string) => when,
@@ -432,6 +442,8 @@ export const en = {
     downloadSelected: "Download selection",
     deleteSelected: "Delete selection",
     downloadingHere: "Downloading",
+    /** Finished, waiting for the file to show up in the listing. */
+    almostThere: "Finishing up",
   },
 
   // Errors the API returns about the request itself, keyed by its `code`.

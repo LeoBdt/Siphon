@@ -73,7 +73,11 @@ export default function DownloadPage() {
   // on the direct path regardless, so offering the switch would only mislead.
   const { data: auth } = useAuthState();
   const canKeep = auth?.user?.effective.canKeepInLibrary ?? true;
-  const [retention, setRetention] = useState<RetentionMode>("library");
+  const [retentionChoice, setRetention] = useState<RetentionMode>("library");
+  // The server puts anyone without the permission on the direct path whatever
+  // they send, so the page says so instead of offering a destination folder
+  // the file was never going to reach.
+  const retention: RetentionMode = canKeep ? retentionChoice : "direct";
 
   function keep(patch: Partial<Draft>) {
     qc.setQueryData<Draft>(DRAFT_KEY, (prev) => ({
@@ -355,6 +359,15 @@ export default function DownloadPage() {
                   ? t.download.retentionLibraryHint
                   : t.download.retentionDirectHint}
               </p>
+            </div>
+          )}
+
+          {/* Told once, plainly, rather than discovered when the file does not
+              turn up in the library. */}
+          {!canKeep && (
+            <div className="flex items-start gap-2 rounded-lg border border-dashed bg-muted/30 p-3 text-xs text-muted-foreground">
+              <Download className="mt-0.5 size-3.5 shrink-0" />
+              <span>{t.download.cannotKeepHint}</span>
             </div>
           )}
 

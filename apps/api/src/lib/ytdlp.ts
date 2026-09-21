@@ -8,6 +8,7 @@ import type {
 } from "@app/shared";
 import { QUALITY_PRESETS } from "@app/shared";
 import { config } from "../config.js";
+import { killTree } from "./kill-tree.js";
 import {
   FILE_PREFIX,
   POST_PREFIX,
@@ -81,9 +82,20 @@ function baseArgs(): string[] {
   return args;
 }
 
-function spawnYtdlp(args: string[]): ChildProcessWithoutNullStreams {
+function spawnYtdlp(
+  args: string[],
+  /**
+   * Put the child in a process group of its own, so cancelling can take its
+   * descendants with it. Only for downloads: a probe has nothing to kill, and
+   * a detached process is one the runtime no longer cleans up for us.
+   */
+  opts: { ownGroup?: boolean } = {},
+): ChildProcessWithoutNullStreams {
   return spawn(config.ytdlpPath, args, {
     windowsHide: true,
+    // Windows has no process groups to join here; the tree is walked by pid
+    // at kill time instead (see killTree).
+    detached: Boolean(opts.ownGroup) && process.platform !== "win32",
     env: {
       ...process.env,
       // yt-dlp (Python) block-buffers its output when stdio is a pipe
@@ -99,6 +111,7 @@ function spawnYtdlp(args: string[]): ChildProcessWithoutNullStreams {
     },
   });
 }
+
 
 // ---------------------------------------------------------------------------
 // Info probe
@@ -248,7 +261,7 @@ export function runDownload(opts: RunDownloadOptions): RunDownloadHandle {
     opts.url,
   ];
 
-  const child = spawnYtdlp(args);
+  const child = spawnYtdlp(args, { ownGroup: true });
   let outputFile: string | null = null;
   let stderrBuf = "";
   let killed = false;
@@ -316,7 +329,12 @@ export function runDownload(opts: RunDownloadOptions): RunDownloadHandle {
       child.on("error", (e) =>
         reject(new Error(`yt-dlp not found or not executable: ${e.message}`)),
       );
-      child.on("close", (code) => {
+      // `exit` rather than `close`: the latter waits for every pipe to drain,
+      // and a killed yt-dlp can leave ffmpeg holding the same stdout — which
+      // left a canceled job running forever, with no way to stop it. What the
+      // parent process did is enough to settle this promise; killTree deals
+      // with the descendants.
+      child.on("exit", (code) => {
         if (killed) {
           reject(new Error("__CANCELED__"));
           return;
@@ -334,7 +352,7 @@ export function runDownload(opts: RunDownloadOptions): RunDownloadHandle {
     promise,
     cancel: () => {
       killed = true;
-      child.kill("SIGKILL");
+      killTree(child);
     },
   };
 }

@@ -63,16 +63,18 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { formatBytes } from "@/lib/format";
+import { ACTIVE_STATUSES, phaseLabel } from "@/lib/job-phase";
 import { cn } from "@/lib/utils";
 
 type MediaKind = "video" | "audio" | "image" | null;
 
-const ACTIVE_STATUSES = [
-  "queued",
-  "fetching-info",
-  "downloading",
-  "processing",
-];
+
+/**
+ * How long a finished download keeps its tile while the listing catches up.
+ * Long enough to cover a refetch, short enough that a file which never arrives
+ * does not leave a full ring sitting there.
+ */
+const GRACE_MS = 15_000;
 
 function parentOf(path: string): string {
   const i = path.lastIndexOf("/");
@@ -459,6 +461,10 @@ function DownloadingTile({ job }: { job: DownloadJob }) {
   const pct = Math.round(progress * 100);
   // Completed jobs keep a full ring while we wait for the file to be listed.
   const determinate = job.status === "downloading" || done;
+  // The same phrase the job card uses. This tile used to say "Downloading"
+  // throughout, so a long conversion looked like a download that had stopped
+  // moving — which is precisely when someone starts wondering.
+  const label = done ? t.files.almostThere : phaseLabel(job, t);
 
   return (
     <motion.div
@@ -479,8 +485,11 @@ function DownloadingTile({ job }: { job: DownloadJob }) {
       <span className="line-clamp-2 w-full text-center text-xs">
         {job.title ?? t.files.downloadingHere}
       </span>
-      <span className="text-[10px] tabular-nums text-primary">
-        {determinate ? `${pct}%` : t.files.downloadingHere}
+      <span className="text-center text-[10px] tabular-nums text-primary">
+        {/* The percentage belongs to the download, and only to it: during a
+            conversion yt-dlp reports nothing, so a number there would be a
+            frozen one. */}
+        {job.status === "downloading" && determinate ? `${pct}% · ${label}` : label}
       </span>
     </motion.div>
   );
@@ -520,7 +529,7 @@ function CrumbDrop({
 export function FileManager() {
   const { t, intl, errorMessage } = useI18n();
   const [path, setPath] = useState("");
-  const { data, isLoading, isFetching, refetch } = useFiles(path);
+  const { data, isLoading, isFetching, refetch, dataUpdatedAt } = useFiles(path);
   // Only the viewer's own downloads become tiles. A member's `destPath` is
   // relative to their own folder, so a job of theirs aimed at their root
   // carries the same empty path as the administrator's library root — and
@@ -548,6 +557,9 @@ export function FileManager() {
   const typedExt = renameValue.trim().match(MEDIA_EXT_RE)?.[0]?.toLowerCase();
 
   const entries = useMemo(() => data?.entries ?? [], [data]);
+
+  // State clock for the placeholder hold below (see the tiles memo).
+  const [now, setNow] = useState(() => Date.now());
 
   const entriesByName = useMemo(
     () => new Map(entries.map((e) => [e.name, e])),
@@ -624,11 +636,17 @@ export function FileManager() {
         files.push({ key: `job:${job.id}`, sortAs: job.title ?? "", job });
       } else if (job.status === "completed" && job.outputFile) {
         // Finished, but not in the listing yet. Hold the placeholder so the
-        // grid does not reflow twice while the refetch is in flight — with a
-        // time limit, in case the file was moved or deleted behind our back.
-        // eslint-disable-next-line react-hooks/purity
-        const age = Date.now() - new Date(job.updatedAt).getTime();
-        if (age < 15_000) {
+        // grid does not reflow twice while the refetch is in flight.
+        //
+        // Two ways out, because a tile that only counts down can stay on
+        // screen forever: a listing fetched *after* the job finished and still
+        // without the file settles the question — it was moved, renamed or
+        // deleted elsewhere — and the deadline catches the rest. `now` is a
+        // state clock rather than Date.now() in render, so the deadline
+        // actually arrives instead of waiting for an unrelated re-render.
+        const finishedAt = new Date(job.updatedAt).getTime();
+        const listingIsNewer = dataUpdatedAt > finishedAt;
+        if (!listingIsNewer && now - finishedAt < GRACE_MS) {
           files.push({ key: `job:${job.id}`, sortAs: job.title ?? "", job });
         }
       }
@@ -646,7 +664,22 @@ export function FileManager() {
         .map((node) => ({ key: node.path, sortAs: node.name, node })),
       ...files,
     ];
-  }, [entries, jobsHere, intl, matchingEntry]);
+  }, [entries, jobsHere, intl, matchingEntry, dataUpdatedAt, now]);
+
+  // Advance the clock only while a placeholder is actually being held, and
+  // stop as soon as none are: a timer that keeps running would re-render this
+  // grid twice a second for nothing.
+  useEffect(() => {
+    const holding = jobsHere.some(
+      (j) =>
+        j.status === "completed" &&
+        j.outputFile &&
+        Date.now() - new Date(j.updatedAt).getTime() < GRACE_MS,
+    );
+    if (!holding) return;
+    const id = setTimeout(() => setNow(Date.now()), 500);
+    return () => clearTimeout(id);
+  }, [jobsHere, now]);
 
   // --- Selection ----------------------------------------------------------
 

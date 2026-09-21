@@ -136,16 +136,25 @@ export async function systemRoutes(app: FastifyInstance) {
     async (): Promise<ReleaseCheck> => checkLatestRelease(APP_VERSION),
   );
 
-  // Trigger a yt-dlp self-update (yt-dlp -U).
+  /**
+   * Trigger a yt-dlp self-update (yt-dlp -U).
+   *
+   * The verdict is decided here, by comparing the version before and after —
+   * not by handing yt-dlp's own two lines of prose to the interface. Those
+   * lines ("Latest version: stable@…, yt-dlp is up to date") take a moment to
+   * read before they admit nothing happened, and they are English whatever
+   * language the app is set to.
+   */
   app.post("/api/system/ytdlp/update", async (): Promise<YtdlpUpdateResult> => {
+    const previousVersion = await ytdlpVersion();
     const { ok, output } = await ytdlpUpdate();
     recordCheck();
     const version = await ytdlpVersion();
-    return {
-      ok,
-      version,
-      message:
-        output || (ok ? "yt-dlp is up to date." : "Update failed."),
-    };
+    const status = !ok
+      ? "failed"
+      : version && previousVersion && version !== previousVersion
+        ? "updated"
+        : "already-current";
+    return { ok, version, previousVersion, status, message: output };
   });
 }

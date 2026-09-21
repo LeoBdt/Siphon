@@ -3,15 +3,18 @@
 import { useState } from "react";
 import {
   ArrowUpCircle,
+  CheckCircle2,
   HardDrive,
   Languages,
   Loader2,
   Palette,
   RefreshCw,
   Trash2,
+  XCircle,
   Zap,
 } from "lucide-react";
 import { toast } from "sonner";
+import type { YtdlpUpdateResult } from "@app/shared";
 import { CONCURRENCY_MAX, CONCURRENCY_MIN } from "@app/shared";
 import {
   Card,
@@ -42,6 +45,7 @@ import {
   useYtdlpInfo,
 } from "@/lib/hooks";
 import { formatBytes, formatDate } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 /**
  * One card per settings concern. They live apart from the pages so a section
@@ -380,7 +384,8 @@ export function YtdlpCard() {
   const settings = useSettings();
   const saveSettings = useUpdateSettings();
   const update = useUpdateYtdlp();
-  const [lastMessage, setLastMessage] = useState<string | null>(null);
+  const [result, setResult] = useState<YtdlpUpdateResult | null>(null);
+  const y = t.settings.ytdlp;
 
   // Snapshot at mount rather than Date.now() in render, which is impure and
   // would give a different answer on every pass. A fortnight threshold does
@@ -395,16 +400,40 @@ export function YtdlpCard() {
         YTDLP_STALE_DAYS * 86_400_000);
 
   function onUpdate() {
-    setLastMessage(null);
+    setResult(null);
     update.mutate(undefined, {
       onSuccess: (res) => {
-        setLastMessage(res.message);
+        setResult(res);
         if (res.ok) toast.success(t.settings.ytdlp.checked);
         else toast.error(t.settings.ytdlp.failed);
       },
       onError: (e) => toast.error(errorMessage(e)),
     });
   }
+
+  /**
+   * The outcome in one line.
+   *
+   * yt-dlp's own output says it in two ("Latest version: stable@…" then
+   * "yt-dlp is up to date (stable@…)"), and you have to read to the end of the
+   * second to learn that nothing happened. The server now decides the verdict
+   * by comparing versions, so this is a phrase in the right language rather
+   * than a program's prose.
+   */
+  const verdict =
+    result?.status === "updated"
+      ? {
+          tone: "text-emerald-600 dark:text-emerald-400",
+          text: y.updatedTo(result.previousVersion ?? "?", result.version ?? "?"),
+        }
+      : result?.status === "already-current"
+        ? {
+            tone: "text-emerald-600 dark:text-emerald-400",
+            text: y.alreadyCurrent(result.version ?? "?"),
+          }
+        : result
+          ? { tone: "text-destructive", text: y.failed }
+          : null;
 
   return (
     <Card>
@@ -487,10 +516,28 @@ export function YtdlpCard() {
           </p>
         )}
 
-        {lastMessage && (
-          <pre className="max-h-40 overflow-auto rounded-lg border bg-muted/40 p-3 text-xs whitespace-pre-wrap text-muted-foreground">
-            {lastMessage}
-          </pre>
+        {verdict && (
+          <p className={cn("flex items-center gap-1.5 text-sm", verdict.tone)}>
+            {result?.ok ? (
+              <CheckCircle2 className="size-4 shrink-0" />
+            ) : (
+              <XCircle className="size-4 shrink-0" />
+            )}
+            {verdict.text}
+          </p>
+        )}
+
+        {/* yt-dlp's own words, kept for when something did go wrong — folded
+            away, because they are not an answer to "did it update?". */}
+        {result?.message && (
+          <details className="text-xs text-muted-foreground">
+            <summary className="cursor-pointer select-none">
+              {y.rawOutput}
+            </summary>
+            <pre className="mt-2 max-h-40 overflow-auto rounded-lg border bg-muted/40 p-3 whitespace-pre-wrap">
+              {result.message}
+            </pre>
+          </details>
         )}
       </CardContent>
     </Card>

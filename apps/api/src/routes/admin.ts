@@ -71,15 +71,17 @@ export async function adminRoutes(app: FastifyInstance) {
 
   app.delete("/api/admin/invites/:token", adminOnly, async (req, reply) => {
     const { token } = req.params as { token: string };
+    // Recorded after the fact: an entry written before the attempt claimed a
+    // revocation had happened even when there was no such invitation.
+    if (!revokeInvite(token)) {
+      return reply.code(404).send({ code: "not_found", error: "Not found" });
+    }
     record({
       action: "invite.revoked",
       actorId: req.user?.id,
       actorName: req.user?.username,
       ip: req.ip,
     });
-    if (!revokeInvite(token)) {
-      return reply.code(404).send({ code: "not_found", error: "Not found" });
-    }
     return reply.code(204).send();
   });
 
@@ -211,6 +213,15 @@ export async function adminRoutes(app: FastifyInstance) {
         error: "This is the only administrator",
       });
     }
+    // Removing an account is the most consequential thing on this page, and it
+    // was the one action leaving no trace behind.
+    record({
+      action: "user.deleted",
+      actorId: req.user?.id,
+      actorName: req.user?.username,
+      target: victim.username,
+      ip: req.ip,
+    });
     return reply.code(204).send();
   });
 

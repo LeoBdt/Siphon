@@ -309,7 +309,17 @@ export interface ReleaseCheck {
 /** Result of triggering a yt-dlp self-update. */
 export interface YtdlpUpdateResult {
   ok: boolean;
+  /** The version now installed. */
   version: string | null;
+  /** What it was before, so "updated" can say what changed. */
+  previousVersion: string | null;
+  /**
+   * The verdict, decided by comparing the version before and after rather
+   * than by reading yt-dlp's prose. The interface renders this; `message` is
+   * only ever shown as raw detail, so the outcome stays translatable.
+   */
+  status: "updated" | "already-current" | "failed";
+  /** yt-dlp's own output, kept for diagnostics. Never a UI sentence. */
   message: string;
 }
 

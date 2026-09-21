@@ -54,6 +54,15 @@ const queue = new PQueue({ concurrency: config.maxConcurrentDownloads });
 /** Active runners, keyed by jobId, so we can cancel in-flight downloads. */
 const active = new Map<string, RunDownloadHandle>();
 
+/**
+ * Jobs the user has asked to stop, from the moment they ask.
+ *
+ * Killing yt-dlp is not instant — it has descendants to take down, and it may
+ * emit a few more progress lines on the way out. This set is what makes cancel
+ * take effect at the click rather than whenever the process happens to die.
+ */
+const canceled = new Set<string>();
+
 function emit(job: DownloadJob | null) {
   if (job) jobEvents.emitUpdate(job);
 }
@@ -98,6 +107,10 @@ function runJob(jobId: string): Promise<void> {
     advanced: fmt,
     destDir,
     onProgress: (p) => {
+      // A cancelled job is settled. yt-dlp may still emit a line or two while
+      // it is being torn down, and writing one through would put the card back
+      // to "downloading" a moment after the user stopped it.
+      if (canceled.has(jobId)) return;
       const isProcessing = p.phase === "merging" || p.phase === "converting";
       if (isProcessing) {
         emit(updateJob(jobId, { status: "processing", phase: p.phase }));
@@ -123,6 +136,9 @@ function runJob(jobId: string): Promise<void> {
 
   return handle.promise
     .then(({ outputFile }) => {
+      // Cancelled just as it finished: honour the decision rather than
+      // announcing a file the user stopped asking for.
+      if (canceled.has(jobId)) return;
       let fileSizeBytes: number | null = null;
       if (outputFile) {
         try {
@@ -144,8 +160,17 @@ function runJob(jobId: string): Promise<void> {
       );
     })
     .catch((err: Error) => {
-      if (err.message === "__CANCELED__") {
-        emit(updateJob(jobId, { status: "canceled", speedBytesPerSec: null }));
+      if (err.message === "__CANCELED__" || canceled.has(jobId)) {
+        // Already flipped to canceled when the user asked; this only clears
+        // the readouts the card would otherwise keep showing.
+        emit(
+          updateJob(jobId, {
+            status: "canceled",
+            speedBytesPerSec: null,
+            etaSeconds: null,
+            phase: null,
+          }),
+        );
       } else {
         const { code, detail } = classifyYtdlpError(err.message);
         emit(
@@ -161,6 +186,7 @@ function runJob(jobId: string): Promise<void> {
     })
     .finally(() => {
       active.delete(jobId);
+      canceled.delete(jobId);
       const parentId = getJob(jobId)?.playlistId;
       if (parentId) recomputeParent(parentId);
     });
@@ -333,8 +359,23 @@ export function cancelDownload(jobId: string): DownloadJob | null {
 
   const handle = active.get(jobId);
   if (handle) {
-    handle.cancel(); // triggers the catch -> status canceled
-  } else if (job.status === "queued") {
+    canceled.add(jobId);
+    // Flipped here, not in the catch: tearing down yt-dlp and its ffmpeg takes
+    // a moment, and a card that keeps counting up after the click reads as a
+    // cancel that did not work.
+    emit(
+      updateJob(jobId, {
+        status: "canceled",
+        speedBytesPerSec: null,
+        etaSeconds: null,
+        phase: null,
+      }),
+    );
+    handle.cancel();
+  } else if (!["completed", "error", "canceled"].includes(job.status)) {
+    // Queued, being probed, or left mid-flight by a restart: there is no
+    // process to kill, but the queue must not pick it up later — runJob
+    // checks the status before it starts.
     emit(updateJob(jobId, { status: "canceled" }));
   }
   return getJob(jobId);
