@@ -15,6 +15,7 @@ import {
   acceptInvite,
   clearLoginFailures,
   clearNotice,
+  consumeReset,
   disableTotp,
   enableTotp,
   createSession,
@@ -23,12 +24,14 @@ import {
   lockedUntil,
   pendingNotice,
   previewInvite,
+  previewReset,
   recordLoginFailure,
   revokeSession,
   setDisplayName,
   setPrivateFolder,
   stageTotpSecret,
   totpSecretOf,
+  updateUser,
   userCount,
 } from "../auth/store.js";
 
@@ -75,6 +78,98 @@ export async function authRoutes(app: FastifyInstance) {
       ip: req.ip,
     });
     return updated;
+  });
+
+  /**
+   * Change one's own password.
+   *
+   * The current one is required although the session already proves who this
+   * is: a session can be a borrowed laptop, and knowing the password is the
+   * only thing that distinguishes its owner from whoever sat down at it.
+   */
+  app.post("/api/auth/password", async (req, reply) => {
+    if (!req.user) {
+      return reply
+        .code(401)
+        .send({ code: "unauthenticated", error: "Sign in required" });
+    }
+    const { currentPassword, newPassword } = (req.body ?? {}) as {
+      currentPassword?: string;
+      newPassword?: string;
+    };
+    if (!newPassword || newPassword.length < MIN_PASSWORD_LENGTH) {
+      return reply.code(400).send({
+        code: "weak_password",
+        error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters`,
+      });
+    }
+    const found = findByUsername(req.user.username);
+    if (
+      !found ||
+      !currentPassword ||
+      !(await verifyPassword(currentPassword, found.passwordHash))
+    ) {
+      return reply
+        .code(401)
+        .send({ code: "invalid_credentials", error: "Wrong password" });
+    }
+
+    await updateUser(req.user.id, { password: newPassword });
+    record({
+      action: "password.changed",
+      actorId: req.user.id,
+      actorName: req.user.username,
+      target: req.user.username,
+      ip: req.ip,
+    });
+    // Changing a password ends every session, this one included — that is the
+    // point of changing it after one may have leaked. A fresh session is
+    // opened here so the person is not thrown back to the sign-in screen for
+    // doing the right thing.
+    const session = createSession(req.user.id);
+    setSessionCookie(reply, session.id, session.expiresAt, session.csrfToken);
+    return { ok: true };
+  });
+
+  /**
+   * The public side of a password reset link.
+   *
+   * Reachable without a session — it is how someone who cannot sign in gets
+   * back in — and it reveals only whose account the link opens, so a guessed
+   * token leaks nothing.
+   */
+  app.get("/api/auth/reset/:token", async (req) => {
+    const { token } = req.params as { token: string };
+    return previewReset(token);
+  });
+
+  app.post("/api/auth/reset/:token", async (req, reply) => {
+    const { token } = req.params as { token: string };
+    const { password } = (req.body ?? {}) as { password?: string };
+    if (!password || password.length < MIN_PASSWORD_LENGTH) {
+      return reply.code(400).send({
+        code: "weak_password",
+        error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters`,
+      });
+    }
+    const user = await consumeReset(token, password);
+    if (!user) {
+      return reply
+        .code(404)
+        .send({ code: "not_found", error: "This link is no longer valid" });
+    }
+    record({
+      action: "password.changed",
+      actorId: user.id,
+      actorName: user.username,
+      target: user.username,
+      ip: req.ip,
+    });
+    // Signed in straight away: they have just proved they hold the link and
+    // chosen a password, and asking them to type it again proves nothing.
+    const session = createSession(user.id);
+    setSessionCookie(reply, session.id, session.expiresAt, session.csrfToken);
+    return user;
   });
 
   /** Acknowledge a one-off notice so it stops being shown. */

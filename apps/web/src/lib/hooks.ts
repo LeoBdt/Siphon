@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import {
   useMutation,
   useQuery,
@@ -369,6 +370,25 @@ export function useSaveGroup() {
   });
 }
 
+/**
+ * Remove a group.
+ *
+ * The server refuses a built-in one, and one that still has members: a group
+ * is a set of defaults other accounts point at, so deleting it under them
+ * would leave those accounts pointing at nothing.
+ */
+export function useDeleteGroup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch(`/api/admin/groups/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["groups"] });
+      qc.invalidateQueries({ queryKey: ["users"] });
+    },
+  });
+}
+
 export function useInvites() {
   return useQuery({
     queryKey: ["invites"],
@@ -386,6 +406,54 @@ export function useCreateInvite() {
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["invites"] }),
   });
+}
+
+/** Change one's own password. The current one is required. */
+export function useChangePassword() {
+  return useMutation({
+    mutationFn: (body: { currentPassword: string; newPassword: string }) =>
+      apiFetch("/api/auth/password", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+  });
+}
+
+/**
+ * Issue a link letting one member set their own password again.
+ *
+ * The administrator never learns what they choose — which is the point, and
+ * why this returns a link rather than a temporary password.
+ */
+export function useResetLink() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) =>
+      apiFetch<{ token: string; expiresAt: string }>(
+        `/api/admin/users/${userId}/reset-link`,
+        { method: "POST" },
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["audit"] }),
+  });
+}
+
+/**
+ * Tell the server the address the app is being reached on.
+ *
+ * Only the browser knows it — behind a proxy the server sees its own
+ * container — and the command-line reset tool has no browser, so this is how
+ * it can print a link that works instead of a bare token.
+ */
+export function useRecordPublicUrl(enabled: boolean) {
+  useEffect(() => {
+    if (!enabled || typeof window === "undefined") return;
+    void apiFetch("/api/admin/public-url", {
+      method: "PUT",
+      body: JSON.stringify({ origin: window.location.origin }),
+    }).catch(() => {
+      // Nothing depends on this: the tool falls back to printing a path.
+    });
+  }, [enabled]);
 }
 
 /** One's own profile. Nothing here touches permissions or anyone else. */

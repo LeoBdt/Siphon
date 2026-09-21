@@ -209,3 +209,34 @@
     scroll-behavior: auto !important;
   }
 }
+/*
+ * Scroll panels inside the interface — a dialog's body, the activity table.
+ *
+ * The browser's own bar is sized for a whole window and drawn in the system
+ * palette; inside a 600px dialog it reads as a piece of another application
+ * sitting on top of this one. Thin, in our own colours, and it fades in on
+ * hover rather than announcing itself. The page's main scrollbar is left
+ * alone on purpose: that one *is* the window's.
+ */
+@layer utilities {
+  .scroll-panel {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent;
+  }
+  .scroll-panel::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scroll-panel::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scroll-panel::-webkit-scrollbar-thumb {
+    background-color: var(--color-border);
+    border: 2px solid transparent;
+    background-clip: content-box;
+    border-radius: 9999px;
+  }
+  .scroll-panel:hover::-webkit-scrollbar-thumb {
+    background-color: color-mix(in oklab, var(--color-foreground) 25%, transparent);
+  }
+}

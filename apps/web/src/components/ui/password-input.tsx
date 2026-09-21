@@ -23,6 +23,7 @@ export function PasswordInput({
   autoComplete,
   autoFocus,
   className,
+  containerClassName,
   id,
 }: {
   value: string;
@@ -30,6 +31,12 @@ export function PasswordInput({
   autoComplete?: string;
   autoFocus?: boolean;
   className?: string;
+  /**
+   * Sizing for the field as a whole. Width belongs here rather than on the
+   * input: the toggle is positioned against this box, so a narrower input
+   * inside a full-width one left the eye stranded to its right.
+   */
+  containerClassName?: string;
   id?: string;
 }) {
   const { t } = useI18n();
@@ -37,7 +44,7 @@ export function PasswordInput({
   const fallbackId = useId();
 
   return (
-    <div className="relative">
+    <div className={cn("relative", containerClassName)}>
       <Input
         id={id ?? fallbackId}
         type={shown ? "text" : "password"}

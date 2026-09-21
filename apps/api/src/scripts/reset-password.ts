@@ -1,24 +1,28 @@
 /**
- * Set a new password for an account, from the machine the instance runs on.
+ * Get back into an account, from the machine the instance runs on.
  *
- * The last door out of a locked instance. Everything else in Siphon is done
- * through the interface on purpose, but an administrator who has forgotten
- * their password cannot reach the interface — and a self-hosted app with no
- * way back in is one database edit away from being abandoned. There is no
- * email to send a reset link to, so the proof of ownership is access to the
- * server itself, which is the strongest one available here.
+ * The last door out of a locked instance. Everything else in Siphon happens in
+ * the interface, but an administrator who has forgotten their password cannot
+ * reach the interface — and a self-hosted app with no way back in is one
+ * database edit away from being abandoned. There is no address to mail a link
+ * to, so the proof of ownership is access to the server itself, which is the
+ * strongest one available here.
  *
- *   pnpm --filter @app/api reset-password                  # list the accounts
- *   pnpm --filter @app/api reset-password <username>       # generate one
- *   pnpm --filter @app/api reset-password <username> <pw>  # set one
+ * It prints a link by default rather than a password, for the same reason the
+ * interface does: nobody else should ever hold someone's password, and a
+ * password typed into a terminal lives on in the shell history.
+ *
+ *   pnpm --filter @app/api reset-password                    # list the accounts
+ *   pnpm --filter @app/api reset-password <username>         # print a link
+ *   pnpm --filter @app/api reset-password <username> --password <pw>
  *
  * In Docker: docker compose exec api node --import tsx \
  *              apps/api/src/scripts/reset-password.ts <username>
  */
-import { randomBytes } from "node:crypto";
 import { MIN_PASSWORD_LENGTH } from "@app/shared";
-import { db } from "../db.js";
+import { db, getSetting } from "../db.js";
 import { hashPassword } from "../auth/password.js";
+import { createPasswordReset } from "../auth/store.js";
 
 interface Row {
   id: string;
@@ -36,15 +40,17 @@ function accounts(): Row[] {
 }
 
 /**
- * A password that can be read over the shoulder and typed once.
+ * Where this instance is reached from a browser.
  *
- * Not meant to be kept: it exists to get back in and change it. Ambiguous
- * characters are left out so nobody loses another ten minutes to an l/1.
+ * The server cannot work it out: behind a proxy it only ever sees its own
+ * container. The web app records the address an administrator actually uses,
+ * so a link can be printed whole; failing that, the path is printed and the
+ * operator knows their own address better than we do.
  */
-function generatePassword(): string {
-  const alphabet = "abcdefghijkmnpqrstuvwxyzACDEFGHJKLMNPQRSTUVWXYZ23456789";
-  const bytes = randomBytes(20);
-  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
+function publicUrl(): string | null {
+  const env = process.env.SIPHON_PUBLIC_URL?.trim();
+  if (env) return env.replace(/\/$/, "");
+  return getSetting("publicUrl");
 }
 
 function list(): void {
@@ -61,21 +67,34 @@ function list(): void {
     const admin = row.groupId === "admin" ? "  [administrator]" : "";
     console.log(`  ${row.username}${name}${admin}`);
   }
-  console.log("\nRun again with a username to set a new password for it.");
+  console.log("\nRun again with a username to get a password reset link.");
+}
+
+function findUser(username: string): Row | null {
+  // COLLATE NOCASE, like signing in: someone typing their own name back is
+  // not obliged to remember its capitalisation.
+  return (
+    (db
+      .prepare(
+        `SELECT id, username, displayName, groupId FROM users
+         WHERE username = ? COLLATE NOCASE`,
+      )
+      .get(username) as unknown as Row | undefined) ?? null
+  );
 }
 
 async function main(): Promise<void> {
-  const [username, password] = process.argv.slice(2);
+  const args = process.argv.slice(2);
+  const username = args[0];
+  const passwordFlag = args.indexOf("--password");
+  const password = passwordFlag === -1 ? null : args[passwordFlag + 1];
+
   if (!username) {
     list();
     return;
   }
 
-  // COLLATE NOCASE, like signing in: someone typing their own name back is
-  // not obliged to remember its capitalisation.
-  const row = db
-    .prepare(`SELECT id, username FROM users WHERE username = ? COLLATE NOCASE`)
-    .get(username) as unknown as Row | undefined;
+  const row = findUser(username);
   if (!row) {
     console.error(`No account called "${username}".\n`);
     list();
@@ -83,33 +102,58 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (password && password.length < MIN_PASSWORD_LENGTH) {
-    console.error(
-      `A password must be at least ${MIN_PASSWORD_LENGTH} characters.`,
+  // The escape hatch from the escape hatch: no browser at all, or an
+  // automated first run. Still never a password this script invented.
+  if (password !== null) {
+    if (!password || password.length < MIN_PASSWORD_LENGTH) {
+      console.error(
+        `A password must be at least ${MIN_PASSWORD_LENGTH} characters.`,
+      );
+      process.exitCode = 1;
+      return;
+    }
+    db.prepare(`UPDATE users SET passwordHash = ? WHERE id = ?`).run(
+      await hashPassword(password),
+      row.id,
     );
-    process.exitCode = 1;
+    db.prepare(`DELETE FROM sessions WHERE userId = ?`).run(row.id);
+    db.prepare(
+      `UPDATE users SET failedAttempts = 0, lockedUntil = NULL, suspended = 0 WHERE id = ?`,
+    ).run(row.id);
+    console.log(`Password set for ${row.username}.`);
+    console.log("Every session on that account has been signed out.");
     return;
   }
 
-  const chosen = password ?? generatePassword();
-  db.prepare(`UPDATE users SET passwordHash = ? WHERE id = ?`).run(
-    await hashPassword(chosen),
-    row.id,
-  );
-  // A forgotten password may be a stolen one. Every existing session ends, and
-  // the lockout counter is cleared so the new password works on the first try
-  // rather than meeting a lock the old one earned.
-  db.prepare(`DELETE FROM sessions WHERE userId = ?`).run(row.id);
+  const { token, expiresAt } = createPasswordReset(row.id);
+  // Suspension and lockout would make the new password useless the moment it
+  // was chosen, so getting back in clears both.
   db.prepare(
     `UPDATE users SET failedAttempts = 0, lockedUntil = NULL, suspended = 0 WHERE id = ?`,
   ).run(row.id);
 
-  console.log(`Password changed for ${row.username}.`);
-  if (!password) console.log(`\n  ${chosen}\n`);
-  console.log("Every session on that account has been signed out.");
-  if (!password) {
-    console.log("Change it from Settings › Profile once you are back in.");
+  const base = publicUrl();
+  console.log(`A reset link for ${row.username}:\n`);
+  if (base) {
+    console.log(`  ${base}/reset/${token}\n`);
+    console.log(
+      "That address is the one Siphon was last opened on. If you reach it",
+    );
+    console.log("somewhere else, keep the path and change the host.");
+  } else {
+    console.log(`  /reset/${token}\n`);
+    console.log(
+      "Open it on whatever address you reach Siphon at, for example",
+    );
+    console.log(`  https://siphon.example.com/reset/${token}`);
+    console.log(
+      "\n(Set SIPHON_PUBLIC_URL, or open the Users settings once, and this",
+    );
+    console.log("prints the whole link.)");
   }
+  console.log(
+    `\nIt works once, and expires ${new Date(expiresAt).toLocaleString()}.`,
+  );
 }
 
 await main();

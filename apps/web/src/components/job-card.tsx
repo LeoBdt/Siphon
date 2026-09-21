@@ -53,7 +53,7 @@ function Stepper({ job, t }: { job: DownloadJob; t: Dictionary }) {
           <div key={label} className="flex items-center gap-1.5">
             <span
               className={cn(
-                "flex items-center gap-1 text-[11px] font-medium transition-colors duration-300",
+                "flex items-center gap-1 text-xs font-medium transition-colors duration-300",
                 done
                   ? "text-emerald-500"
                   : active
@@ -181,13 +181,13 @@ export function JobCard({
 
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           {job.isPlaylistParent && (
-            <Badge variant="secondary" className="gap-1 text-[10px]">
+            <Badge variant="secondary" className="gap-1 text-xs">
               <ListVideo className="size-3" />
               {t.job.videos(job.childCount ?? 0)}
             </Badge>
           )}
           {authorName && (
-            <Badge variant="outline" className="gap-1 text-[10px] font-normal">
+            <Badge variant="outline" className="gap-1 text-xs font-normal">
               <UserIcon className="size-3" />
               {authorName}
             </Badge>

@@ -63,6 +63,22 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(userId);
 
+  -- A single-use link letting someone set their own password again.
+  --
+  -- The point is that nobody else ever holds it: an administrator issues the
+  -- link and never learns what the person chooses, the same way an invitation
+  -- never makes them pick someone's username. Whoever runs the server could
+  -- always rewrite the hash in this file directly — but that ends every
+  -- session on the account, so it cannot be done quietly.
+  CREATE TABLE IF NOT EXISTS password_resets (
+    token     TEXT PRIMARY KEY,
+    userId    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    createdAt TEXT NOT NULL,
+    expiresAt TEXT NOT NULL,
+    usedAt    TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_resets_user ON password_resets(userId);
+
   CREATE TABLE IF NOT EXISTS invites (
     token     TEXT PRIMARY KEY,
     groupId   TEXT NOT NULL REFERENCES groups(id),
@@ -717,6 +733,103 @@ export async function acceptInvite(
     `UPDATE invites SET usedCount = usedCount + 1, usedAt = ? WHERE token = ?`,
   ).run(new Date().toISOString(), token);
   return user;
+}
+
+// ---------------------------------------------------------------------------
+// Password resets
+// ---------------------------------------------------------------------------
+
+/**
+ * Long enough to survive a message sitting unread overnight, short enough that
+ * a link forgotten in a chat does not stay a key to the account forever.
+ */
+const RESET_HOURS = 24;
+
+interface ResetRow {
+  token: string;
+  userId: string;
+  expiresAt: string;
+  usedAt: string | null;
+}
+
+/**
+ * Issue a link for one account.
+ *
+ * Any previous unused link for that account is dropped: two live keys where
+ * the holder expects one is how an old message, forwarded or copied, stays
+ * usable long after it was replaced.
+ */
+export function createPasswordReset(userId: string): {
+  token: string;
+  expiresAt: string;
+} {
+  db.prepare(`DELETE FROM password_resets WHERE userId = ? AND usedAt IS NULL`).run(
+    userId,
+  );
+  const token = randomBytes(32).toString("base64url");
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + RESET_HOURS * 3_600_000);
+  db.prepare(
+    `INSERT INTO password_resets (token, userId, createdAt, expiresAt) VALUES (?, ?, ?, ?)`,
+  ).run(token, userId, now.toISOString(), expiresAt.toISOString());
+  return { token, expiresAt: expiresAt.toISOString() };
+}
+
+function usableReset(token: string): ResetRow | null {
+  const row = db
+    .prepare(`SELECT * FROM password_resets WHERE token = ?`)
+    .get(token) as unknown as ResetRow | undefined;
+  if (!row || row.usedAt) return null;
+  if (new Date(row.expiresAt).getTime() < Date.now()) return null;
+  return row;
+}
+
+/**
+ * What the page behind the link may show.
+ *
+ * A name and nothing else: enough to be sure you are resetting the right
+ * account, and useless to someone who guessed a token.
+ */
+export function previewReset(token: string): {
+  valid: boolean;
+  displayName: string | null;
+  username: string | null;
+} {
+  const row = usableReset(token);
+  const user = row ? getUser(row.userId) : null;
+  return user
+    ? { valid: true, displayName: user.displayName, username: user.username }
+    : { valid: false, displayName: null, username: null };
+}
+
+/** Spend the link and set the password the person chose. */
+export async function consumeReset(
+  token: string,
+  password: string,
+): Promise<User | null> {
+  const row = usableReset(token);
+  if (!row) return null;
+  db.prepare(`UPDATE users SET passwordHash = ? WHERE id = ?`).run(
+    await hashPassword(password),
+    row.userId,
+  );
+  db.prepare(`UPDATE password_resets SET usedAt = ? WHERE token = ?`).run(
+    new Date().toISOString(),
+    token,
+  );
+  // Every other session ends, and any lockout is cleared: a forgotten password
+  // may be a stolen one, and the new password must work on the first try
+  // rather than meet a lock the old one earned.
+  revokeUserSessions(row.userId);
+  clearLoginFailures(row.userId);
+  return getUser(row.userId);
+}
+
+/** Drop spent and expired links at boot, so the table cannot grow forever. */
+export function pruneResets(): void {
+  db.prepare(
+    `DELETE FROM password_resets WHERE usedAt IS NOT NULL OR expiresAt < ?`,
+  ).run(new Date().toISOString());
 }
 
 // ---------------------------------------------------------------------------

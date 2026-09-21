@@ -22,7 +22,11 @@ const NAV_ITEMS = [
   { key: "download", href: "/", icon: Download },
   { key: "files", href: "/files", icon: Folder },
   { key: "history", href: "/history", icon: History },
-  { key: "settings", href: "/settings", icon: Settings },
+  // `match` is the prefix that lights the tile up, which is not always where
+  // the link goes: Settings opens on a section but owns the whole tree.
+  // Straight to the first section rather than to /settings, which only
+  // redirects there — and showed an empty frame while it did.
+  { key: "settings", href: "/settings/profile", match: "/settings", icon: Settings },
 ] as const;
 
 const VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0";
@@ -94,7 +98,7 @@ export function AppSidebar() {
           <LogOut />
           <span className="sr-only">{t.auth.signOut}</span>
         </SidebarMenuButton>
-        <span className="text-[10px] tabular-nums text-muted-foreground">
+        <span className="text-xs tabular-nums text-muted-foreground">
           {VERSION}
         </span>
       </SidebarFooter>

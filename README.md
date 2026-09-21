@@ -35,9 +35,11 @@ you.
 | **Library** | A sandboxed file explorer: breadcrumbs, create and rename, drag and drop, context menu, download a file or a whole folder as a ZIP. |
 | **Accounts** | Invitations rather than accounts made on someone's behalf — named, reusable for several people, and greeting the invitee by name. Permissions default from a group and are overridable per person, with storage quotas and a maximum file size. Optional two-factor authentication, an audit log, and lockout after repeated failed sign-ins. |
 | **Per-member scope** | A confined member works in a folder of their own and sees only their own queue and history; an administrator can widen the view and read each account's usage. |
+| **Administration** | Search and filter the accounts, edit anyone's permissions in place, suspend or delete an account, lift a lockout, and send a password reset link — the person chooses the password, so nobody else ever holds it. |
+| **Quotas and limits** | A storage quota and a maximum size per download, set on a group or on one person. A download over the limit is refused before it starts when the size is known, and stopped and cleaned up if it turns out to exceed while running. |
 | **Built-in playback** | Persistent audio bar with a remembered volume, plus a video player with fullscreen. |
 | **History** | Persisted in SQLite, with search, filters, retry and delete. |
-| **Maintenance** | Disk usage, one-click `yt-dlp` update, and cleanup of the temporary files an interrupted download leaves behind. |
+| **Maintenance** | Disk usage, one-click `yt-dlp` update (or automatic), a check for new Siphon releases, and cleanup of the temporary files an interrupted download leaves behind. |
 | **Bilingual** | English and French, switchable at runtime; translations are type-checked, so a missing string fails the build rather than the UI. |
 
 ## Stack
@@ -74,7 +76,23 @@ default password to change, and no window during which one exists.
 
 ### Settings
 
-Put these in a `.env` file next to `docker-compose.yml`. They are read when the
+Almost everything is set from the interface; the environment only carries what
+has to be known before the app starts.
+
+**In the app**, under Settings — what a given person sees depends on their
+permissions:
+
+| Section | Holds |
+|---|---|
+| Profile | The name shown beside your downloads |
+| Security | Your password, two-factor authentication, your private folder |
+| Appearance | Theme and language |
+| Downloads | How many downloads run at once |
+| Storage | Disk usage, and a sweep for temporary leftovers |
+| Engine | `yt-dlp`'s version and automatic updates, and the check for a new Siphon |
+| Users · Groups · Invitations · Activity | Accounts, what each may do, how much they may keep, the outstanding invitations and an audit log |
+
+**In the environment**, put these in a `.env` file next to `docker-compose.yml`. They are read when the
 containers start, so changing one needs `docker compose up -d`, never a rebuild.
 
 | Variable | Purpose | Default |
@@ -83,6 +101,7 @@ containers start, so changing one needs `docker compose up -d`, never a rebuild.
 | `SIPHON_BIND` | Address to bind to — `127.0.0.1` keeps it off the network | `0.0.0.0` |
 | `DATA_DIR` | Where downloads and the database live | `./data` |
 | `MAX_CONCURRENT_DOWNLOADS` | Initial concurrency; the Settings page overrides it from then on | `2` |
+| `SIPHON_PUBLIC_URL` | Only used by the command-line password reset, to print a whole link instead of a path. It changes nothing else — not routing, not the links the app itself makes | the address the app was last opened on |
 
 Leave `DATA_DIR` out unless you want the library somewhere else — on a larger
 disk, typically. Point it at a path you have created and given to uid 1000, and
@@ -99,18 +118,33 @@ docker compose down                         # stop (data is untouched)
 docker compose pull && docker compose up -d # update
 ```
 
-### Locked out
+### Password resets
 
-There is no password reset by email — Siphon sends no mail and knows no address.
-Proof of ownership is access to the machine it runs on:
+**For everyone but you**, use the interface: Settings › Users › the account ›
+*Send a reset link*. The person sets their own password; you never see it, the
+same way you never choose their username — which matters on an instance where
+folders can be private. Issuing a new link invalidates the previous one.
+
+**For the administrator who cannot sign in**, there is no interface to reach,
+and no email to send a link to: Siphon sends no mail and knows no address.
+Proof of ownership is access to the machine it runs on.
 
 ```bash
-docker compose exec api node --import tsx   apps/api/src/scripts/reset-password.ts            # list the accounts
-docker compose exec api node --import tsx   apps/api/src/scripts/reset-password.ts <username> # print a new password
+docker compose exec api node --import tsx \
+  apps/api/src/scripts/reset-password.ts            # list the accounts
+docker compose exec api node --import tsx \
+  apps/api/src/scripts/reset-password.ts <username> # print a reset link
 ```
 
-It signs every session on that account out, and clears any lockout. Change the
-password from Settings › Profile once you are back in.
+It works on any account, but it is the administrator's way back in — anyone
+else is better served by the interface, which needs no shell on the server.
+
+The link is single-use and lasts a day; opening it sets a new password and
+signs every other session out. It prints the whole address once the app has
+been opened from a browser, since only the browser knows the address a proxy
+answers on — set `SIPHON_PUBLIC_URL` in your `.env` file to pin it. Add
+`--password <pw>` to set one directly instead, for a server with no browser
+anywhere near it.
 
 `docker compose down` removes the containers, not your files: the library and
 the database live in `DATA_DIR` on the host. Only `down -v` destroys volumes,

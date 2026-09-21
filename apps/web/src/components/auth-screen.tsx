@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { DUR, EASE_OUT } from "@/lib/motion";
 
-export type AuthMode = "signIn" | "setup" | "invite";
+export type AuthMode = "signIn" | "setup" | "invite" | "reset";
 
 /**
  * The one screen shown before anything else is reachable: signing in, creating
@@ -23,21 +23,21 @@ export type AuthMode = "signIn" | "setup" | "invite";
  */
 export function AuthScreen({
   mode,
-  groupName,
   greeting,
   invitedName,
+  resetFor,
   pending,
   error,
   needsCode,
   onSubmit,
 }: {
   mode: AuthMode;
-  /** For an invitation: the group the invitee is joining. */
-  groupName?: string | null;
   /** For an invitation: who is inviting, already phrased. */
   greeting?: string | null;
   /** For an invitation: the name it was addressed to, to start them off. */
   invitedName?: string | null;
+  /** For a reset link: whose account it opens, so they can be sure. */
+  resetFor?: string | null;
   pending: boolean;
   error?: string | null;
   /** The account has a second factor: ask for the code as well. */
@@ -69,24 +69,31 @@ export function AuthScreen({
       subtitle: t.auth.setupSubtitle,
       submit: t.auth.submitSetup,
     },
+    reset: {
+      title: t.auth.resetTitle,
+      subtitle: resetFor
+        ? t.auth.resetSubtitleFor(resetFor)
+        : t.auth.resetSubtitle,
+      submit: t.auth.submitReset,
+    },
     invite: {
       // The greeting, when the invitation carries one, replaces the generic
       // title: "Alice, Leo invites you to Siphon" says everything the heading
       // and the subtitle were saying separately.
       title: greeting ?? t.auth.inviteTitle,
-      subtitle: groupName
-        ? t.auth.inviteSubtitle(groupName)
-        : t.auth.inviteTitle,
+      subtitle: t.auth.inviteSubtitle,
       submit: t.auth.submitInvite,
     },
   }[mode];
 
+  // A reset knows whose account it is from the link, so it asks one thing.
+  const resetting = mode === "reset";
   // A new account states the rule up front rather than rejecting afterwards.
-  const newAccount = mode !== "signIn";
+  const newAccount = mode === "setup" || mode === "invite";
   const canSubmit =
     !pending &&
-    username.trim().length > 0 &&
-    (!newAccount || password.length >= MIN_PASSWORD_LENGTH) &&
+    (resetting || username.trim().length > 0) &&
+    (newAccount || resetting ? password.length >= MIN_PASSWORD_LENGTH : true) &&
     (!needsCode || code.trim().length > 0);
 
   function submit(e: FormEvent) {
@@ -113,7 +120,7 @@ export function AuthScreen({
           <SiphonMark className="size-5" />
         </span>
 
-        <h1 className="mt-5 text-xl font-semibold tracking-tight">
+        <h1 className="mt-5 text-2xl font-semibold tracking-tight">
           {copy.title}
         </h1>
         <p className="mt-1.5 text-sm text-muted-foreground">{copy.subtitle}</p>
@@ -139,26 +146,33 @@ export function AuthScreen({
             </label>
           )}
 
-          <label className="flex flex-col gap-1.5 text-sm font-medium">
-            {t.auth.username}
-            <Input
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              autoComplete="username"
-              autoFocus={!newAccount}
-              className="h-10"
-            />
-          </label>
+          {/* A reset link already names its account; asking for the username
+              again would only be a chance to get it wrong. */}
+          {!resetting && (
+            <label className="flex flex-col gap-1.5 text-sm font-medium">
+              {t.auth.username}
+              <Input
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoComplete="username"
+                autoFocus={!newAccount}
+                className="h-10"
+              />
+            </label>
+          )}
 
           <label className="flex flex-col gap-1.5 text-sm font-medium">
-            {t.auth.password}
+            {resetting ? t.auth.newPassword : t.auth.password}
             <PasswordInput
               value={password}
               onChange={setPassword}
-              autoComplete={newAccount ? "new-password" : "current-password"}
+              autoComplete={
+                newAccount || resetting ? "new-password" : "current-password"
+              }
+              autoFocus={resetting}
               className="h-10"
             />
-            {newAccount && (
+            {(newAccount || resetting) && (
               <span className="text-xs font-normal text-muted-foreground">
                 {t.auth.passwordHint(MIN_PASSWORD_LENGTH)}
               </span>

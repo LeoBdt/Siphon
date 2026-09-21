@@ -268,7 +268,7 @@ function AudioBar({
                   {item.name}
                 </span>
                 <div className="flex items-center gap-2">
-                  <span className="w-9 text-right text-[11px] tabular-nums text-muted-foreground">
+                  <span className="w-9 text-right text-xs tabular-nums text-muted-foreground">
                     {formatDuration(seekValue ?? time)}
                   </span>
                   <input
@@ -283,7 +283,7 @@ function AudioBar({
                     onBlur={() => seeking && commitSeek()}
                     className="h-1 flex-1 cursor-pointer accent-primary"
                   />
-                  <span className="w-9 text-[11px] tabular-nums text-muted-foreground">
+                  <span className="w-9 text-xs tabular-nums text-muted-foreground">
                     {formatDuration(duration)}
                   </span>
                 </div>

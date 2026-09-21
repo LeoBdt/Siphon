@@ -15,8 +15,10 @@ import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Segmented } from "@/components/ui/segmented";
 import { useI18n } from "@/components/i18n-provider";
+import { MIN_PASSWORD_LENGTH } from "@app/shared";
 import {
   useAuthState,
+  useChangePassword,
   useSetPrivateFolder,
   useTotpDisable,
   useTotpEnable,
@@ -140,6 +142,82 @@ export function SecondFactorCard() {
             </Button>
           </div>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+/**
+ * Changing one's own password.
+ *
+ * The current one is asked for although the session already proves who this
+ * is: a session can be a borrowed laptop, and knowing the password is what
+ * distinguishes its owner from whoever sat down at it. Until this existed, an
+ * administrator could change everyone's password except their own.
+ */
+export function PasswordCard() {
+  const { t, errorMessage } = useI18n();
+  const change = useChangePassword();
+  const p = t.settings.password;
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+
+  const ready = current.length > 0 && next.length >= MIN_PASSWORD_LENGTH;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <KeyRound className="size-4 text-primary" />
+          {p.title}
+        </CardTitle>
+        <CardDescription>{p.description}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <label className="flex flex-col gap-1.5 text-sm font-medium">
+          {p.current}
+          <PasswordInput
+            value={current}
+            onChange={setCurrent}
+            autoComplete="current-password"
+            containerClassName="sm:max-w-xs"
+          />
+        </label>
+        <label className="flex flex-col gap-1.5 text-sm font-medium">
+          {p.new}
+          <PasswordInput
+            value={next}
+            onChange={setNext}
+            autoComplete="new-password"
+            containerClassName="sm:max-w-xs"
+          />
+          <span className="text-xs font-normal text-muted-foreground">
+            {t.auth.passwordHint(MIN_PASSWORD_LENGTH)}
+          </span>
+        </label>
+        <Button
+          size="sm"
+          className="self-start"
+          disabled={!ready || change.isPending}
+          onClick={() =>
+            change.mutate(
+              { currentPassword: current, newPassword: next },
+              {
+                onSuccess: () => {
+                  setCurrent("");
+                  setNext("");
+                  toast.success(p.changed);
+                },
+                onError: (e) => toast.error(errorMessage(e)),
+              },
+            )
+          }
+        >
+          {change.isPending && <Loader2 className="size-4 animate-spin" />}
+          {p.submit}
+        </Button>
       </CardContent>
     </Card>
   );

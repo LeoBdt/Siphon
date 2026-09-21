@@ -68,7 +68,7 @@ export function ProfileCard() {
               className="h-9 sm:max-w-xs"
             />
             <Button
-              size="sm"
+              className="h-9"
               disabled={!dirty || save.isPending}
               onClick={() =>
                 save.mutate(name.trim() || null, {

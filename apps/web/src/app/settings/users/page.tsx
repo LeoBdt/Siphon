@@ -1,5 +1,5 @@
-import { UsersSettings } from "@/components/settings/users";
+import { UsersTab } from "@/components/settings/users";
 
 export default function UsersSettingsPage() {
-  return <UsersSettings />;
+  return <UsersTab />;
 }

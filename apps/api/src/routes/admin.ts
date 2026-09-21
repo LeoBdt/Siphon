@@ -10,7 +10,7 @@ import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { config } from "../config.js";
 import { listAudit, record } from "../auth/audit.js";
-import { downloadStatsFor } from "../db.js";
+import { downloadStatsFor, setSetting } from "../db.js";
 import { dirUsage } from "../lib/dir-size.js";
 import { resolveInsideRoot } from "../lib/paths.js";
 import {
@@ -23,6 +23,7 @@ import {
   clearLoginFailures,
   createGroup,
   createInvite,
+  createPasswordReset,
   deleteGroup,
   deleteUser,
   getUser,
@@ -267,6 +268,47 @@ export async function adminRoutes(app: FastifyInstance) {
       folderCount: usage.folders,
       ...downloadStatsFor(id),
     };
+  });
+
+  /**
+   * A link letting one member set their own password again.
+   *
+   * An administrator issues it and never learns what is chosen. Handing over a
+   * temporary password instead would mean holding someone else's credentials —
+   * the very thing invitations exist to avoid — and on an instance with
+   * private folders that is not a detail.
+   */
+  app.post("/api/admin/users/:id/reset-link", adminOnly, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const target = getUser(id);
+    if (!target) {
+      return reply.code(404).send({ code: "not_found", error: "Not found" });
+    }
+    const reset = createPasswordReset(id);
+    record({
+      action: "password.reset",
+      actorId: req.user?.id,
+      actorName: req.user?.username,
+      target: target.username,
+      ip: req.ip,
+    });
+    return reset;
+  });
+
+  /**
+   * Remember the address the app is actually reached on.
+   *
+   * The server cannot know it: behind a proxy it sees its own container, and
+   * the public host is whatever a browser typed. The browser does know, so it
+   * says once, and the command-line reset tool — which has no browser — can
+   * then print a link that works instead of a bare token.
+   */
+  app.put("/api/admin/public-url", adminOnly, async (req) => {
+    const { origin } = (req.body ?? {}) as { origin?: string };
+    if (typeof origin === "string" && /^https?:\/\/[^\s]+$/.test(origin)) {
+      setSetting("publicUrl", origin.replace(/\/$/, ""));
+    }
+    return { ok: true };
   });
 
   app.get("/api/admin/audit", adminOnly, async (req): Promise<AuditEntry[]> => {

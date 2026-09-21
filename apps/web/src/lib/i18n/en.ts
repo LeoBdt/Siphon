@@ -25,7 +25,12 @@ export const en = {
     setupSubtitle:
       "Create the administrator account. There is no default password — you choose it now.",
     inviteTitle: "Join this instance",
-    inviteSubtitle: (group: string) => `You have been invited as ${group}.`,
+    // No group name here. "You have been invited as Members" quotes an
+    // administrator's label at someone who has never seen it, and it reads
+    // worse the more descriptive the group is ("invited as Restricted
+    // accounts"). The subtitle says what to do instead; the greeting above
+    // already says who invited them.
+    inviteSubtitle: "Pick a username and a password to create your account.",
     inviteInvalid: "This invitation has expired or has already been used.",
     // Two greetings, because an invitation may be addressed to someone or to
     // whoever holds the link, and may or may not know who sent it. A username
@@ -34,6 +39,13 @@ export const en = {
     invitedBy: (by: string) => `${by} invites you to Siphon`,
     invitedNamed: (who: string) => `${who}, you are invited to Siphon`,
     username: "Username",
+    newPassword: "New password",
+    resetTitle: "Choose a new password",
+    resetSubtitle: "This link lets you set a new password.",
+    resetSubtitleFor: (who: string) =>
+      `This link sets a new password for ${who}.`,
+    resetInvalid: "This link has expired or has already been used.",
+    submitReset: "Set my password",
     displayName: "Your name",
     displayNamePlaceholder: "e.g. Alex",
     displayNameHint:
@@ -100,7 +112,7 @@ export const en = {
     save: "Save file",
     tooLarge: {
       // The estimate is a guess most of the time, so the wording says so and
-      // the choice is left to the person â the server stops it for real if it
+      // the choice is left to the person — the server stops it for real if it
       // turns out to exceed.
       warn: (size: string, limit: string) =>
         `This looks like about ${size}, over your ${limit} limit. It will be stopped if it really is.`,
@@ -210,15 +222,18 @@ export const en = {
 
   settings: {
     title: "Settings",
-    subtitle: "Downloads, storage and yt-dlp maintenance.",
 
     // Grouped by who they concern: yours, and the server's.
     groups: {
       mine: "My account",
       instance: "Instance",
+      accounts: "Accounts",
     },
     sections: {
       profile: "Profile",
+      groupsSection: "Groups",
+      invites: "Invitations",
+      activity: "Activity",
       security: "Security",
       appearance: "Appearance",
       downloads: "Downloads",
@@ -234,7 +249,7 @@ export const en = {
       displayName: "Display name",
       displayNamePlaceholder: "e.g. Alex",
       displayNameHint:
-        "Leave it empty and nothing is shown in your place — never your username.",
+        "Optional. Without one, you appear under your username.",
       username: "Username",
       usernameHint: "Chosen when the account was created. Only an administrator can change it.",
       save: "Save",
@@ -351,13 +366,22 @@ export const en = {
       deleted: "Account deleted",
       viewHistory: "View history",
       saved: "Saved",
+      resetPassword: "Send a reset link",
+      resetLinkCopied: "Reset link copied â send it to them",
+      resetLinkAgain: "Issue a different link",
+      resetLinkHint:
+        "The user chooses the new password; you never see it. The link works once and expires in a day.",
 
       dialog: {
+        identity: "Identity",
+        identityHint:
+          "The username is what they sign in with; changing it signs nobody out, but they need to be told.",
         permissions: "Permissions",
         usage: "Usage",
         group: "Group",
         groupHint:
           "The group sets the defaults. Anything decided below overrides them for this person only.",
+        limits: "Limits",
         close: "Close",
       },
 
@@ -368,7 +392,11 @@ export const en = {
         inherit: "Inherited",
         allow: "Allowed",
         deny: "Refused",
-        inheritedFrom: (group: string, value: string) => `${group}: ${value}`,
+        // The group is named once above the list, not on all eight rows: the
+        // repetition was what made the labels long enough to squeeze the
+        // permission names into two lines each.
+        fromGroup: (group: string) => `Values not set here come from ${group}.`,
+        inheritedValue: (value: string) => `Inherited (${value})`,
         yes: "allowed",
         no: "refused",
       },
@@ -386,6 +414,8 @@ export const en = {
         custom: "Limit",
         unitGb: "GB",
         unitCount: "at a time",
+        adminUnlimited:
+          "An administrator has no quota and no size limit.",
       },
 
       permissions: {
@@ -399,7 +429,11 @@ export const en = {
         canHavePrivateFolder: "May keep a private folder",
         canBrowseWholeLibrary: "See the whole library",
         isAdmin: "Administrator",
-        isAdminHint: "Implies every other permission.",
+        isAdminHint:
+          "Every permission above applies, whatever it is set to, and the account can manage the others.",
+        // Shown on the rows an administrator holds by virtue of the role.
+        adminGrants:
+          "This account is an administrator: everything below applies to it.",
       },
 
       groups: {
@@ -408,7 +442,18 @@ export const en = {
         members: (n: number) => `${n} user${n > 1 ? "s" : ""}`,
         newGroup: "New group",
         name: "Group name",
-        builtIn: "Built in",
+        builtInHint:
+          "This group comes with Siphon and cannot be deleted. You can still change what it allows.",
+        deleteGroupBlocked:
+          "Move its members to another group before deleting it.",
+        groupDeleted: "Group deleted",
+        // Seeded into the database in English when the instance is created,
+        // so the stored name can never follow the interface language. They
+        // are translated from their fixed ids instead.
+        builtIn: {
+          admin: "Administrators",
+          member: "Members",
+        },
         edit: "Edit",
         deleteGroup: "Delete this group",
         adminLocked:
@@ -457,6 +502,16 @@ export const en = {
       unavailable: "An administrator has not granted this permission.",
     },
 
+    password: {
+      title: "Password",
+      description:
+        "Changing it signs every other session out — that is the point of changing it after one may have leaked.",
+      current: "Current password",
+      new: "New password",
+      submit: "Change password",
+      changed: "Password changed",
+    },
+
     security: {
       title: "Second factor",
       description:
@@ -493,6 +548,7 @@ export const en = {
         "totp.enabled": "Second factor enabled",
         "totp.disabled": "Second factor turned off",
         "password.changed": "Password changed",
+        "password.reset": "Password reset link issued",
       },
     },
 

@@ -404,7 +404,7 @@ const EntryTile = memo(function EntryTile({
           {node.name}
         </span>
         {!isDir && node.sizeBytes != null && (
-          <span className="text-[10px] text-muted-foreground">
+          <span className="text-xs text-muted-foreground">
             {formatBytes(node.sizeBytes, intl)}
           </span>
         )}
@@ -485,7 +485,7 @@ function DownloadingTile({ job }: { job: DownloadJob }) {
       <span className="line-clamp-2 w-full text-center text-xs">
         {job.title ?? t.files.downloadingHere}
       </span>
-      <span className="text-center text-[10px] tabular-nums text-primary">
+      <span className="text-center text-xs tabular-nums text-primary">
         {/* The percentage belongs to the download, and only to it: during a
             conversion yt-dlp reports nothing, so a number there would be a
             frozen one. */}

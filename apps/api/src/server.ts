@@ -14,7 +14,7 @@ import { startYtdlpAutoUpdate } from "./lib/ytdlp-autoupdate.js";
 import { authHook } from "./auth/guard.js";
 import { authRoutes } from "./routes/auth.js";
 import { adminRoutes } from "./routes/admin.js";
-import { pruneSessions } from "./auth/store.js";
+import { pruneResets, pruneSessions } from "./auth/store.js";
 import { pruneAudit } from "./auth/audit.js";
 
 async function buildServer() {
@@ -33,7 +33,24 @@ async function buildServer() {
 
   // `credentials` so the session cookie survives the cross-origin fetches the
   // development setup makes; behind the proxy everything is same-origin anyway.
-  await app.register(cors, { origin: config.webOrigin, credentials: true });
+  //
+  // In development the dev server is often opened from another machine on the
+  // network — a phone, a second laptop — and its origin is then a LAN address
+  // nobody configured. Those are accepted while developing, and only those:
+  // in production the origin stays exactly what WEB_ORIGIN says, because there
+  // the browser talks to the proxy and never to this service directly.
+  const devOrigin = (origin: string): boolean =>
+    /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(
+      origin,
+    );
+  await app.register(cors, {
+    origin:
+      process.env.NODE_ENV === "production"
+        ? config.webOrigin
+        : (origin, cb) =>
+            cb(null, !origin || origin === config.webOrigin || devOrigin(origin)),
+    credentials: true,
+  });
   await app.register(websocket);
 
   // Body-less POSTs (retry / cancel / yt-dlp update) may arrive with an empty
@@ -91,6 +108,7 @@ async function main() {
   // them so they resume; sweep stale temp artifacts in the background.
   reconcileOnBoot();
   pruneSessions();
+  pruneResets();
   pruneAudit();
   const resumed = resumeInterruptedJobs();
 

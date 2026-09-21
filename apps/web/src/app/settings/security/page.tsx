@@ -1,4 +1,5 @@
 import {
+  PasswordCard,
   PrivateFolderCard,
   SecondFactorCard,
 } from "@/components/settings/security";
@@ -7,6 +8,7 @@ import {
 export default function SecuritySettingsPage() {
   return (
     <>
+      <PasswordCard />
       <SecondFactorCard />
       <PrivateFolderCard />
     </>

@@ -11,9 +11,23 @@ import type { ApiErrorCode } from "@app/shared";
  * In development the two dev servers are on separate ports, so we point at the
  * API directly. `NEXT_PUBLIC_API_URL` overrides either case.
  */
+/**
+ * Where the API answers in development.
+ *
+ * Derived from the address the page was opened on rather than hardcoded to
+ * localhost: opening the dev server from another machine on the network —
+ * a phone, another laptop — made every call and the WebSocket aim at
+ * *that* machine's localhost, where nothing is listening. The port is the
+ * only part that is fixed, because the two dev servers are separate.
+ */
+function developmentApi(): string {
+  if (typeof window === "undefined") return "http://127.0.0.1:3001";
+  return `${window.location.protocol}//${window.location.hostname}:3001`;
+}
+
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ??
-  (process.env.NODE_ENV === "production" ? "" : "http://localhost:3001");
+  (process.env.NODE_ENV === "production" ? "" : developmentApi());
 
 function withSlash(path: string): string {
   return path.startsWith("/") ? path : `/${path}`;

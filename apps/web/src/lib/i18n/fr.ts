@@ -19,13 +19,21 @@ export const fr: Dictionary = {
     setupSubtitle:
       "Crée le compte administrateur. Il n'y a pas de mot de passe par défaut — tu le choisis maintenant.",
     inviteTitle: "Rejoindre cette instance",
-    inviteSubtitle: (group: string) => `Tu es invité en tant que ${group}.`,
+    inviteSubtitle:
+      "Choisis un identifiant et un mot de passe pour créer ton compte.",
     inviteInvalid: "Cette invitation a expiré ou a déjà été utilisée.",
     invitedByNamed: (who: string, by: string) =>
       `${who}, ${by} t'invite sur Siphon`,
     invitedBy: (by: string) => `${by} t'invite sur Siphon`,
     invitedNamed: (who: string) => `${who}, tu es invité sur Siphon`,
     username: "Identifiant",
+    newPassword: "Nouveau mot de passe",
+    resetTitle: "Choisis un nouveau mot de passe",
+    resetSubtitle: "Ce lien te permet de définir un nouveau mot de passe.",
+    resetSubtitleFor: (who: string) =>
+      `Ce lien définit un nouveau mot de passe pour ${who}.`,
+    resetInvalid: "Ce lien a expiré ou a déjà été utilisé.",
+    submitReset: "Définir mon mot de passe",
     displayName: "Ton nom",
     displayNamePlaceholder: "ex. Alex",
     displayNameHint:
@@ -200,14 +208,17 @@ export const fr: Dictionary = {
 
   settings: {
     title: "Réglages",
-    subtitle: "Téléchargements, stockage et maintenance de yt-dlp.",
 
     groups: {
       mine: "Mon compte",
       instance: "Instance",
+      accounts: "Comptes",
     },
     sections: {
       profile: "Profil",
+      groupsSection: "Groupes",
+      invites: "Invitations",
+      activity: "Activité",
       security: "Sécurité",
       appearance: "Apparence",
       downloads: "Téléchargements",
@@ -223,7 +234,7 @@ export const fr: Dictionary = {
       displayName: "Nom affiché",
       displayNamePlaceholder: "ex. Alex",
       displayNameHint:
-        "Laisse vide et rien ne s'affiche à ta place — jamais ton identifiant.",
+        "Facultatif. Sans nom, tu apparais sous ton identifiant.",
       username: "Identifiant",
       usernameHint:
         "Choisi à la création du compte. Seul un administrateur peut le changer.",
@@ -340,13 +351,22 @@ export const fr: Dictionary = {
       deleted: "Compte supprimé",
       viewHistory: "Voir l'historique",
       saved: "Enregistré",
+      resetPassword: "Envoyer un lien de réinitialisation",
+      resetLinkCopied: "Lien copié — transmets-le à la personne",
+      resetLinkAgain: "Émettre un autre lien",
+      resetLinkHint:
+        "L'utilisateur choisit son mot de passe lui-même, tu ne le vois jamais. Le lien ne sert qu'une fois et expire sous un jour.",
 
       dialog: {
+        identity: "Identité",
+        identityHint:
+          "L'identifiant est ce avec quoi la personne se connecte ; le changer ne déconnecte personne, mais il faut la prévenir.",
         permissions: "Permissions",
         usage: "Utilisation",
         group: "Groupe",
         groupHint:
           "Le groupe définit les valeurs par défaut. Ce qui est décidé ci-dessous ne vaut que pour cette personne.",
+        limits: "Limites",
         close: "Fermer",
       },
 
@@ -354,7 +374,9 @@ export const fr: Dictionary = {
         inherit: "Hérité",
         allow: "Autorisé",
         deny: "Refusé",
-        inheritedFrom: (group: string, value: string) => `${group} : ${value}`,
+        fromGroup: (group: string) =>
+          `Ce qui n'est pas défini ici vient du groupe ${group}.`,
+        inheritedValue: (value: string) => `Hérité (${value})`,
         yes: "autorisé",
         no: "refusé",
       },
@@ -372,6 +394,8 @@ export const fr: Dictionary = {
         custom: "Limite",
         unitGb: "Go",
         unitCount: "à la fois",
+        adminUnlimited:
+          "Un administrateur n'a ni quota ni limite de taille.",
       },
 
       permissions: {
@@ -385,7 +409,10 @@ export const fr: Dictionary = {
         canHavePrivateFolder: "Peut avoir un dossier privé",
         canBrowseWholeLibrary: "Voir toute la bibliothèque",
         isAdmin: "Administrateur",
-        isAdminHint: "Implique toutes les autres permissions.",
+        isAdminHint:
+          "Toutes les permissions ci-dessus s'appliquent, quel que soit leur réglage, et le compte peut gérer les autres.",
+        adminGrants:
+          "Ce compte est administrateur : tout ce qui suit s'applique.",
       },
 
       groups: {
@@ -394,7 +421,15 @@ export const fr: Dictionary = {
         members: (n: number) => `${n} utilisateur${n > 1 ? "s" : ""}`,
         newGroup: "Nouveau groupe",
         name: "Nom du groupe",
-        builtIn: "Intégré",
+        builtInHint:
+          "Ce groupe est fourni avec Siphon et ne peut pas être supprimé. Tu peux en revanche changer ce qu'il autorise.",
+        deleteGroupBlocked:
+          "Déplace ses membres dans un autre groupe avant de le supprimer.",
+        groupDeleted: "Groupe supprimé",
+        builtIn: {
+          admin: "Administrateurs",
+          member: "Membres",
+        },
         edit: "Modifier",
         deleteGroup: "Supprimer ce groupe",
         adminLocked:
@@ -445,6 +480,16 @@ export const fr: Dictionary = {
       unavailable: "Un administrateur n'a pas accordé cette permission.",
     },
 
+    password: {
+      title: "Mot de passe",
+      description:
+        "Le changer déconnecte toutes les autres sessions — c'est l'intérêt de le changer après une fuite possible.",
+      current: "Mot de passe actuel",
+      new: "Nouveau mot de passe",
+      submit: "Changer le mot de passe",
+      changed: "Mot de passe modifié",
+    },
+
     security: {
       title: "Second facteur",
       description:
@@ -481,6 +526,7 @@ export const fr: Dictionary = {
         "totp.enabled": "Second facteur activé",
         "totp.disabled": "Second facteur désactivé",
         "password.changed": "Mot de passe modifié",
+        "password.reset": "Lien de réinitialisation émis",
       },
     },
 

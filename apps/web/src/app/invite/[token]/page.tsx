@@ -28,6 +28,12 @@ export default function InvitePage({
   const preview = useQuery({
     queryKey: ["invite", token],
     retry: false,
+    // Asked once. Accepting spends the invitation, so a refetch afterwards
+    // correctly answers "no longer valid" — and for a moment the page said so
+    // to the very person who had just used it, before the redirect landed.
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
     queryFn: () => apiFetch<InvitePreview>(`/api/auth/invite/${token}`),
   });
 
@@ -42,6 +48,9 @@ export default function InvitePage({
         body: JSON.stringify(body),
       }),
     onSuccess: async () => {
+      // Everything on screen was fetched as nobody; the invitation's own
+      // preview is dropped rather than refetched, since it is spent.
+      qc.removeQueries({ queryKey: ["invite", token] });
       await qc.invalidateQueries();
       router.replace("/");
     },
@@ -49,7 +58,9 @@ export default function InvitePage({
 
   if (preview.isPending) return null;
 
-  if (!preview.data?.valid) {
+  // Once it has been accepted the verdict no longer applies to this visitor —
+  // they are on their way in.
+  if (!preview.data?.valid && !accept.isSuccess && !accept.isPending) {
     return (
       <div className="dot-grid-subtle flex min-h-svh items-center justify-center px-6">
         <p className="max-w-sm text-center text-sm text-muted-foreground">
@@ -63,7 +74,8 @@ export default function InvitePage({
   // someone by an administrator who has one, by one who has not, to nobody in
   // particular, or to nobody by nobody — in which case the screen falls back
   // to its own title.
-  const { label, invitedBy } = preview.data;
+  const label = preview.data?.label ?? null;
+  const invitedBy = preview.data?.invitedBy ?? null;
   const greeting =
     label && invitedBy
       ? t.auth.invitedByNamed(label, invitedBy)
@@ -76,7 +88,6 @@ export default function InvitePage({
   return (
     <AuthScreen
       mode="invite"
-      groupName={preview.data.groupName}
       greeting={greeting}
       invitedName={label}
       pending={accept.isPending}

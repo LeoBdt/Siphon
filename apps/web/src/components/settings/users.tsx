@@ -6,6 +6,7 @@ import {
   Copy,
   HardDrive,
   History,
+  KeyRound,
   Link2,
   Loader2,
   Lock,
@@ -20,7 +21,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import type { Group, Invite, PermissionOverrides, User } from "@app/shared";
-import { MAX_INVITE_USES } from "@app/shared";
+import { MAX_DISPLAY_NAME, MAX_INVITE_USES } from "@app/shared";
 import {
   Card,
   CardContent,
@@ -44,12 +45,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Segmented } from "@/components/ui/segmented";
 import { useI18n } from "@/components/i18n-provider";
 import {
   useAudit,
   useAuthState,
   useCreateInvite,
+  useDeleteGroup,
   useDeleteUser,
   useGroups,
   useInvites,
@@ -57,12 +58,15 @@ import {
   useSaveGroup,
   useSaveUser,
   useSuspendUser,
+  useRecordPublicUrl,
+  useResetLink,
   useUnlockUser,
   useUsers,
   useUserStats,
 } from "@/lib/hooks";
 import { formatBytes, formatDate } from "@/lib/format";
 import { personName } from "@/lib/people";
+import { groupName, groupNameById } from "@/lib/groups";
 import {
   FLAGS,
   GroupLimitGrid,
@@ -83,45 +87,18 @@ import { cn } from "@/lib/utils";
  * and filtered, and editing happens in a dialog — so the list never moves
  * under the cursor.
  */
-type Tab = "users" | "groups" | "invites" | "audit";
-
-export function UsersSettings() {
-  const { t } = useI18n();
-  const [tab, setTab] = useState<Tab>("users");
-  const u = t.settings.users;
-
-  return (
-    <div className="flex flex-col gap-4">
-      <Segmented<Tab>
-        id="users-tabs"
-        ariaLabel={u.title}
-        value={tab}
-        onChange={setTab}
-        className="self-start"
-        options={[
-          { value: "users", label: u.tabs.users },
-          { value: "groups", label: u.tabs.groups },
-          { value: "invites", label: u.tabs.invites },
-          { value: "audit", label: u.tabs.audit },
-        ]}
-      />
-
-      {tab === "users" && <UsersTab />}
-      {tab === "groups" && <GroupsTab />}
-      {tab === "invites" && <InvitesTab />}
-      {tab === "audit" && <AuditTab />}
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Users
 // ---------------------------------------------------------------------------
 
 type StatusFilter = "any" | "active" | "suspended" | "locked" | "admins";
 
-function UsersTab() {
+export function UsersTab() {
   const { t, intl } = useI18n();
+  // Told once, from the one page an administrator is sure to open: the
+  // command-line reset tool has no browser, so this is how it learns the
+  // address to print in a link.
+  useRecordPublicUrl(true);
   const u = t.settings.users;
   const { data: me } = useAuthState();
   const { data: users, isLoading } = useUsers();
@@ -142,11 +119,15 @@ function UsersTab() {
       if (!q) return true;
       // Name, handle and group, because those are the three things someone
       // looking for an account actually remembers.
-      return [user.displayName, user.username, user.groupName]
+      return [
+        user.displayName,
+        user.username,
+        groupNameById(user.groupId, t) ?? user.groupName,
+      ]
         .filter(Boolean)
         .some((field) => field!.toLowerCase().includes(q));
     });
-  }, [users, query, groupId, status]);
+  }, [users, query, groupId, status, t]);
 
   // Kept as an id rather than the object: the list refetches after every edit,
   // and holding a copy would show a stale one until the dialog was reopened.
@@ -283,7 +264,7 @@ function UserRow({
       </div>
 
       <span className="rounded-md bg-muted px-2 py-0.5 text-xs">
-        {user.groupName}
+        {groupNameById(user.groupId, t) ?? user.groupName}
       </span>
 
       {/* Two different states, never conflated: a decision, and a counter. */}
@@ -307,6 +288,79 @@ function UserRow({
         <SlidersHorizontal className="size-4" />
         {u.manage}
       </Button>
+    </div>
+  );
+}
+
+/**
+ * The two names an account has, editable by an administrator.
+ *
+ * Held in local state and saved on demand rather than on every keystroke:
+ * a username is unique, and sending each intermediate spelling would collide
+ * with other accounts on the way to a perfectly good one.
+ */
+function IdentityFields({
+  user,
+  onSave,
+  pending,
+}: {
+  user: User;
+  onSave: (patch: { username?: string; displayName?: string | null }) => void;
+  pending: boolean;
+}) {
+  const { t } = useI18n();
+  const u = t.settings.users;
+  const [displayName, setDisplayName] = useState(user.displayName ?? "");
+  const [username, setUsername] = useState(user.username);
+  // Follow the account when it changes underneath, unless it is being typed in.
+  const [syncedFrom, setSyncedFrom] = useState(user.id + user.username + (user.displayName ?? ""));
+  const signature = user.id + user.username + (user.displayName ?? "");
+  if (syncedFrom !== signature) {
+    setSyncedFrom(signature);
+    setDisplayName(user.displayName ?? "");
+    setUsername(user.username);
+  }
+
+  const dirty =
+    username.trim() !== user.username ||
+    displayName.trim() !== (user.displayName ?? "");
+
+  return (
+    <div className="flex flex-col gap-2">
+      <h4 className="text-sm font-semibold">{u.dialog.identity}</h4>
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="flex flex-1 flex-col gap-1 text-xs text-muted-foreground">
+          {t.settings.profile.displayName}
+          <Input
+            value={displayName}
+            maxLength={MAX_DISPLAY_NAME}
+            onChange={(e) => setDisplayName(e.target.value)}
+            className="h-9"
+          />
+        </label>
+        <label className="flex flex-1 flex-col gap-1 text-xs text-muted-foreground">
+          {t.settings.profile.username}
+          <Input
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            className="h-9"
+          />
+        </label>
+        <Button
+          className="h-9"
+          disabled={!dirty || !username.trim() || pending}
+          onClick={() =>
+            onSave({
+              username: username.trim(),
+              displayName: displayName.trim() || null,
+            })
+          }
+        >
+          {pending && <Loader2 className="size-4 animate-spin" />}
+          {t.settings.profile.save}
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">{u.dialog.identityHint}</p>
     </div>
   );
 }
@@ -337,9 +391,13 @@ function UserDialog({
   const save = useSaveUser();
   const suspend = useSuspendUser();
   const unlock = useUnlockUser();
+  const resetLink = useResetLink();
   const remove = useDeleteUser();
   const [confirming, setConfirming] = useState(false);
   const [typed, setTyped] = useState("");
+  // The issued link, held so it can be read and sent rather than caught in a
+  // toast. Cleared with the dialog: it is one account's link, not the page's.
+  const [link, setLink] = useState<string | null>(null);
 
   if (!user) return null;
   const group = groups.find((g) => g.id === user.groupId);
@@ -348,71 +406,24 @@ function UserDialog({
   return (
     <>
       <Dialog open onOpenChange={onOpenChange}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[85vh] flex-col gap-4 overflow-hidden sm:max-w-2xl">
+          <DialogHeader className="pr-8">
             <DialogTitle className="flex flex-wrap items-baseline gap-2">
               {personName(user)}
-              <span className="text-xs font-normal text-muted-foreground">
+              <span className="text-sm font-normal text-muted-foreground">
                 @{user.username}
               </span>
             </DialogTitle>
           </DialogHeader>
 
-          <div className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium">{u.dialog.group}</span>
-            <Select
-              value={user.groupId}
-              onValueChange={(v) =>
-                v && save.mutate({ id: user.id, groupId: v }, { onError: fail })
-              }
-            >
-              <SelectTrigger className="h-9">
-                <SelectValue>
-                  {(v: string) => groups.find((g) => g.id === v)?.name ?? v}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {groups.map((g) => (
-                  <SelectItem key={g.id} value={g.id}>
-                    {g.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">{u.dialog.groupHint}</p>
-          </div>
+          {/* Only this scrolls, so the name of whoever is being edited — and
+              the way out — stay where they were put. */}
+          <div className="scroll-panel -mr-2 flex flex-1 flex-col gap-5 overflow-y-auto pr-2">
 
-          <div>
-            <h4 className="mb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-              {u.dialog.permissions}
-            </h4>
-            <UserPermissionGrid
-              group={group}
-              overrides={user.overrides as PermissionOverrides}
-              onChange={(flag: Flag, value) =>
-                save.mutate(
-                  { id: user.id, overrides: { [flag]: value } },
-                  { onError: fail },
-                )
-              }
-            />
-            <UserLimitGrid
-              group={group}
-              overrides={user.overrides as PermissionOverrides}
-              onChange={(limit: Limit, value) =>
-                save.mutate(
-                  // undefined means "inherit", which the API stores as null —
-                  // the same shape the boolean overrides use.
-                  { id: user.id, overrides: { [limit]: value ?? null } },
-                  { onError: fail },
-                )
-              }
-            />
-          </div>
-
-          <UserStats user={user} formatWhen={formatWhen} />
-
-          <DialogFooter className="flex-wrap gap-2">
+          {/* What you came to do, at the top. These were at the bottom, under
+              a permission list and a usage table — so reaching the button for
+              a locked-out colleague meant scrolling past everything else. */}
+          <div className="flex flex-wrap gap-2">
             {user.lockedUntil && (
               <Button
                 size="sm"
@@ -423,6 +434,40 @@ function UserDialog({
                 {u.unlock}
               </Button>
             )}
+
+            {/* A link, never a password: an administrator has no business
+                holding someone else's credentials, and on an instance with
+                private folders that is not a detail. */}
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={resetLink.isPending || Boolean(link)}
+              onClick={() =>
+                resetLink.mutate(user.id, {
+                  onSuccess: async ({ token }) => {
+                    const url = `${window.location.origin}/reset/${token}`;
+                    setLink(url);
+                    try {
+                      await navigator.clipboard.writeText(url);
+                      toast.success(u.resetLinkCopied);
+                    } catch {
+                      // Clipboard access needs a secure context, absent on the
+                      // plain-HTTP LAN deployments this app often lives on. The
+                      // link is on screen and selectable either way.
+                    }
+                  },
+                  onError: fail,
+                })
+              }
+            >
+              {resetLink.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <KeyRound className="size-4" />
+              )}
+              {u.resetPassword}
+            </Button>
+
             {/* Suspending or deleting oneself is never what was meant, and the
                 server refuses it anyway. */}
             {!isSelf && (
@@ -446,7 +491,7 @@ function UserDialog({
                 </Button>
                 <Button
                   size="sm"
-                  variant="ghost"
+                  variant="outline"
                   className="text-destructive hover:text-destructive"
                   onClick={() => {
                     setTyped("");
@@ -458,7 +503,116 @@ function UserDialog({
                 </Button>
               </>
             )}
-          </DialogFooter>
+          </div>
+
+          {/* The link itself, not only a toast that is gone in four seconds:
+              it has to be sent to someone, which takes longer than that. */}
+          {link && (
+            <div className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-3">
+              <div className="flex items-center gap-2">
+                <code className="scroll-panel flex-1 truncate rounded-md bg-background px-2 py-1.5 text-xs">
+                  {link}
+                </code>
+                <Button
+                  size="icon-sm"
+                  variant="outline"
+                  title={u.invites.copyLink}
+                  onClick={() => void navigator.clipboard?.writeText(link)}
+                >
+                  <Copy className="size-4" />
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">{u.resetLinkHint}</p>
+              {/* Issuing another one drops this: the server keeps a single
+                  live link per account, so two messages can never both work. */}
+              <Button
+                size="sm"
+                variant="outline"
+                className="self-start"
+                onClick={() => setLink(null)}
+              >
+                <KeyRound className="size-4" />
+                {u.resetLinkAgain}
+              </Button>
+            </div>
+          )}
+
+          <IdentityFields
+              user={user}
+              pending={save.isPending}
+              onSave={(patch) =>
+                save.mutate(
+                  { id: user.id, ...patch },
+                  {
+                    onSuccess: () => toast.success(u.saved),
+                    onError: fail,
+                  },
+                )
+              }
+            />
+
+          <div className="flex flex-col gap-1.5">
+            <h4 className="text-sm font-semibold">{u.dialog.group}</h4>
+            <Select
+              value={user.groupId}
+              onValueChange={(v) =>
+                v && save.mutate({ id: user.id, groupId: v }, { onError: fail })
+              }
+            >
+              <SelectTrigger className="h-9 bg-background">
+                <SelectValue>
+                  {(v: string) => groupName(groups.find((g) => g.id === v), t, v)}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {groups.map((g) => (
+                  <SelectItem key={g.id} value={g.id}>
+                    {groupName(g, t)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">{u.dialog.groupHint}</p>
+          </div>
+
+          {/* Two different kinds of rule, so two headings: what this person may
+              do, and how much of it. They used to run together under one. */}
+          <div>
+            <h4 className="mb-1 text-sm font-semibold">
+              {u.dialog.permissions}
+            </h4>
+            <UserPermissionGrid
+              group={group}
+              effective={user.effective}
+              overrides={user.overrides as PermissionOverrides}
+              onChange={(flag: Flag, value) =>
+                save.mutate(
+                  { id: user.id, overrides: { [flag]: value } },
+                  { onError: fail },
+                )
+              }
+            />
+          </div>
+
+          <div>
+            <h4 className="mb-1 text-sm font-semibold">{u.dialog.limits}</h4>
+            <UserLimitGrid
+              group={group}
+              effective={user.effective}
+              overrides={user.overrides as PermissionOverrides}
+              onChange={(limit: Limit, value) =>
+                save.mutate(
+                  // undefined means "inherit", which the API stores as null —
+                  // the same shape the boolean overrides use.
+                  { id: user.id, overrides: { [limit]: value ?? null } },
+                  { onError: fail },
+                )
+              }
+            />
+          </div>
+
+            <UserStats user={user} formatWhen={formatWhen} />
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -597,11 +751,12 @@ function Stat({
 // Groups
 // ---------------------------------------------------------------------------
 
-function GroupsTab() {
+export function GroupsTab() {
   const { t, errorMessage } = useI18n();
   const g = t.settings.users.groups;
   const { data: groups, isLoading } = useGroups();
   const save = useSaveGroup();
+  const removeGroup = useDeleteGroup();
   const [name, setName] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
   const current = groups?.find((group) => group.id === editing) ?? null;
@@ -625,15 +780,11 @@ function GroupsTab() {
                 key={group.id}
                 className="flex flex-wrap items-center gap-2 px-3 py-2.5"
               >
-                <span className="font-medium">{group.name}</span>
+                <span className="font-medium">{groupName(group, t)}</span>
                 <span className="text-xs text-muted-foreground">
                   {g.members(group.memberCount)}
                 </span>
-                {group.builtIn && (
-                  <span className="rounded-md bg-muted px-2 py-0.5 text-xs">
-                    {g.builtIn}
-                  </span>
-                )}
+
                 <Button
                   size="sm"
                   variant="ghost"
@@ -656,7 +807,6 @@ function GroupsTab() {
             className="h-9"
           />
           <Button
-            size="sm"
             variant="outline"
             disabled={!name.trim()}
             onClick={() =>
@@ -677,35 +827,81 @@ function GroupsTab() {
 
       {current && (
         <Dialog open onOpenChange={(open) => !open && setEditing(null)}>
-          <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
-            <DialogHeader>
-              <DialogTitle>{current.name}</DialogTitle>
+          <DialogContent className="flex max-h-[85vh] flex-col gap-4 overflow-hidden sm:max-w-2xl">
+            <DialogHeader className="pr-8">
+              <DialogTitle>{groupName(current, t)}</DialogTitle>
             </DialogHeader>
+
+            {/* At the top, where the user dialog keeps its actions: what you
+                can do to the thing comes before its settings. */}
+            {!current.builtIn && (
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-destructive hover:text-destructive"
+                  disabled={current.memberCount > 0 || removeGroup.isPending}
+                  title={
+                    current.memberCount > 0 ? g.deleteGroupBlocked : undefined
+                  }
+                  onClick={() =>
+                    removeGroup.mutate(current.id, {
+                      onSuccess: () => {
+                        setEditing(null);
+                        toast.success(g.groupDeleted);
+                      },
+                      onError: (e) => toast.error(errorMessage(e)),
+                    })
+                  }
+                >
+                  <Trash2 className="size-4" />
+                  {g.deleteGroup}
+                </Button>
+              </div>
+            )}
+
+            <div className="scroll-panel -mr-2 flex flex-1 flex-col gap-5 overflow-y-auto pr-2">
             {/* The built-in Administrators group must keep its powers, or the
                 instance can be left with nobody able to manage it. */}
-            {current.id === "admin" && (
+            {current.id === "admin" ? (
               <p className="text-xs text-muted-foreground">{g.adminLocked}</p>
-            )}
-            <GroupPermissionGrid
-              permissions={current.permissions}
-              disabled={current.id === "admin"}
-              onChange={(flag, value) =>
-                save.mutate(
-                  { id: current.id, permissions: { [flag]: value } },
-                  { onError: (e) => toast.error(errorMessage(e)) },
-                )
-              }
-            />
-            <GroupLimitGrid
-              permissions={current.permissions}
-              disabled={current.id === "admin"}
-              onChange={(limit, value) =>
-                save.mutate(
-                  { id: current.id, permissions: { [limit]: value } },
-                  { onError: (e) => toast.error(errorMessage(e)) },
-                )
-              }
-            />
+            ) : current.builtIn ? (
+              <p className="text-xs text-muted-foreground">{g.builtInHint}</p>
+            ) : null}
+            {/* Two headings, because these are two different kinds of rule:
+                what the group's members may do, and how much of it. Run
+                together, the quota rows read as more permissions. */}
+            <div>
+              <h4 className="mb-1 text-sm font-semibold">
+                {t.settings.users.dialog.permissions}
+              </h4>
+              <GroupPermissionGrid
+                permissions={current.permissions}
+                disabled={current.id === "admin"}
+                onChange={(flag, value) =>
+                  save.mutate(
+                    { id: current.id, permissions: { [flag]: value } },
+                    { onError: (e) => toast.error(errorMessage(e)) },
+                  )
+                }
+              />
+            </div>
+            <div>
+              <h4 className="mb-1 text-sm font-semibold">
+                {t.settings.users.dialog.limits}
+              </h4>
+              <GroupLimitGrid
+                permissions={current.permissions}
+                disabled={current.id === "admin"}
+                onChange={(limit, value) =>
+                  save.mutate(
+                    { id: current.id, permissions: { [limit]: value } },
+                    { onError: (e) => toast.error(errorMessage(e)) },
+                  )
+                }
+              />
+              </div>
+            </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setEditing(null)}>
                 {t.settings.users.dialog.close}
@@ -722,7 +918,7 @@ function GroupsTab() {
 // Invitations
 // ---------------------------------------------------------------------------
 
-function InvitesTab() {
+export function InvitesTab() {
   const { t, intl, errorMessage } = useI18n();
   const i = t.settings.users.invites;
   const { data: invites } = useInvites();
@@ -765,25 +961,29 @@ function InvitesTab() {
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <div className="flex flex-col gap-3 rounded-xl border p-3">
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="invite-label" className="text-sm font-medium">
-              {i.forWhom}
-            </label>
-            <Input
-              id="invite-label"
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-              placeholder={i.forWhomPlaceholder}
-              className="h-9"
-            />
-            <p className="text-xs text-muted-foreground">{i.forWhomHint}</p>
-          </div>
+          {/* A link several people will use is addressed to nobody, so there
+              is no name to ask for — and the greeting on it says "Leo invites
+              you" rather than naming someone who is not the only recipient. */}
+          {maxUses === 1 && (
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="invite-label" className="text-sm font-medium">
+                {i.forWhom}
+              </label>
+              <Input
+                id="invite-label"
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder={i.forWhomPlaceholder}
+              />
+              <p className="text-xs text-muted-foreground">{i.forWhomHint}</p>
+            </div>
+          )}
 
           <div className="flex flex-wrap items-end gap-2">
             <Select value={groupId} onValueChange={(v) => v && setGroupId(v)}>
               <SelectTrigger className="h-9 w-44">
                 <SelectValue>
-                  {(v: string) => groups?.find((g) => g.id === v)?.name ?? v}
+                  {(v: string) => groupName(groups?.find((g) => g.id === v), t, v)}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
@@ -818,12 +1018,15 @@ function InvitesTab() {
             </div>
 
             <Button
-              size="sm"
               className="h-9"
               disabled={create.isPending}
               onClick={() =>
                 create.mutate(
-                  { groupId, label: label.trim() || undefined, maxUses },
+                  {
+                    groupId,
+                    label: maxUses === 1 ? label.trim() || undefined : undefined,
+                    maxUses,
+                  },
                   {
                     onSuccess: (created) => {
                       setLabel("");
@@ -954,7 +1157,7 @@ function InvitesTab() {
 // ---------------------------------------------------------------------------
 
 /** The audit trail: who did what, newest first. */
-function AuditTab() {
+export function ActivityTab() {
   const { t, intl } = useI18n();
   const { data: entries, isLoading } = useAudit();
   const a = t.settings.audit;
@@ -974,7 +1177,7 @@ function AuditTab() {
         ) : !entries?.length ? (
           <p className="text-sm text-muted-foreground">{a.empty}</p>
         ) : (
-          <div className="max-h-96 overflow-auto rounded-lg border">
+          <div className="scroll-panel max-h-96 overflow-auto rounded-lg border">
             <table className="w-full text-sm">
               <tbody>
                 {entries.map((entry) => (

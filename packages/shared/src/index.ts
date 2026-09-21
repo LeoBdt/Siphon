@@ -539,7 +539,9 @@ export type AuditAction =
   | "privacy.revoked"
   | "totp.enabled"
   | "totp.disabled"
-  | "password.changed";
+  | "password.changed"
+  /** An administrator issued a reset link for someone's account. */
+  | "password.reset";
 
 export interface AuditEntry {
   id: number;
