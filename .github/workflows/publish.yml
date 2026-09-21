@@ -99,10 +99,40 @@ jobs:
           # Full history: the notes are generated from the commits since the
           # previous tag, and a shallow clone has none of them.
           fetch-depth: 0
+      # Notes written from the commit subjects, not --generate-notes: that
+      # lists merged pull requests, and work lands here by pushing straight to
+      # main — so it produced a release whose entire body was a compare link.
+      # Subjects are the release notes, which is one more reason to write them
+      # for a reader.
       - env:
           GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" \
-            --title "Siphon ${GITHUB_REF_NAME#v}" \
-            --generate-notes \
-            --verify-tag
+          previous=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+          {
+            if [ -n "$previous" ]; then
+              echo "## Changes since ${previous}"
+              echo
+              git log --no-merges --format='- %s' "${previous}..${GITHUB_REF_NAME}"
+              echo
+              echo "**Full changelog**: https://github.com/${REPO}/compare/${previous}...${GITHUB_REF_NAME}"
+            else
+              # First release: everything there is.
+              echo "## Changes"
+              echo
+              git log --no-merges --format='- %s' "${GITHUB_REF_NAME}"
+            fi
+          } > "${RUNNER_TEMP}/notes.md"
+
+          # Idempotent, so re-running this job repairs a release rather than
+          # failing on one that already exists.
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release edit "${GITHUB_REF_NAME}" \
+              --title "Siphon ${GITHUB_REF_NAME#v}" \
+              --notes-file "${RUNNER_TEMP}/notes.md"
+          else
+            gh release create "${GITHUB_REF_NAME}" \
+              --title "Siphon ${GITHUB_REF_NAME#v}" \
+              --notes-file "${RUNNER_TEMP}/notes.md" \
+              --verify-tag
+          fi
