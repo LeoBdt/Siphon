@@ -99,6 +99,19 @@ docker compose down                         # stop (data is untouched)
 docker compose pull && docker compose up -d # update
 ```
 
+### Locked out
+
+There is no password reset by email — Siphon sends no mail and knows no address.
+Proof of ownership is access to the machine it runs on:
+
+```bash
+docker compose exec api node --import tsx   apps/api/src/scripts/reset-password.ts            # list the accounts
+docker compose exec api node --import tsx   apps/api/src/scripts/reset-password.ts <username> # print a new password
+```
+
+It signs every session on that account out, and clears any lockout. Change the
+password from Settings › Profile once you are back in.
+
 `docker compose down` removes the containers, not your files: the library and
 the database live in `DATA_DIR` on the host. Only `down -v` destroys volumes,
 and it is never needed here.
