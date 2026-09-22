@@ -64,7 +64,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             // `pb-20` left a band of dots stranded above the bar. A margin
             // shrinks the surface instead, and the plain background of the
             // frame shows through underneath.
-            audio && "mb-20",
+            // Exactly the player bar's height (h-16), so the gap left under
+            // the content matches the one above it.
+            audio && "mb-16",
           )}
         >
           {children}

@@ -262,9 +262,13 @@ function AudioBar({
             // the sign-out button. A literal width rather than the
             // `--sidebar-width-icon` variable, because the player is mounted
             // outside the sidebar provider that defines it.
-            className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:left-14"
+            // A fixed height, and the shell reserves exactly that much below
+            // the content. Left to its contents the bar came out around 61px
+            // while 80 were being held for it, so everything above ended with
+            // a wider gap underneath than it had on top.
+            className="fixed inset-x-0 bottom-0 z-40 h-16 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:left-14"
           >
-            <div className="mx-auto flex max-w-4xl items-center gap-3 px-4 py-2.5">
+            <div className="mx-auto flex h-full max-w-4xl items-center gap-3 px-4">
               <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
                 <Music2 className="size-5" />
               </span>

@@ -397,6 +397,17 @@ const EntryTile = memo(function EntryTile({
    */
   const animated = animateLayout || wink;
 
+  /**
+   * Whether *this* tile was new when it mounted.
+   *
+   * Captured once, because the CSS arrival is a class and a class added later
+   * replays the animation: the grid marks itself settled a frame after it
+   * mounts, and that turned every tile in a crowded folder into a second
+   * fade — the flicker on opening a big folder. Motion's `initial` had this
+   * behaviour for free; CSS needs it spelled out.
+   */
+  const [enters] = useState(animateEntry);
+
   return (
     <ContextMenu>
       <ContextMenuTrigger
@@ -420,7 +431,7 @@ const EntryTile = memo(function EntryTile({
           ) : (
             <div
               {...handlers}
-              className={cn(tileClass, animateEntry && "tile-enter")}
+              className={cn(tileClass, enters && "tile-enter")}
             />
           )
         }
@@ -762,11 +773,15 @@ const EntryRow = memo(function EntryRow({
             onClick={(e: React.MouseEvent) => onSelect(node, e)}
             onDoubleClick={() => onOpen(node)}
             className={cn(
-              "grid cursor-default grid-cols-[1fr_6rem_9rem] items-center gap-3 rounded-lg border border-transparent px-2 py-1.5 text-sm transition-colors",
+              // A row, not a card: in a list the rounded bordered boxes read
+              // as a stack of chips. Flat, full width, separated by a hairline
+              // — and the selected one marked by a bar down its left edge,
+              // where a ring around a full-width row would be a box again.
+              "grid cursor-default grid-cols-[1fr_6rem_9rem] items-center gap-3 border-l-2 border-transparent py-2 pr-3 pl-3 text-sm transition-colors",
               selected
-                ? "border-primary/60 bg-primary/10"
+                ? "border-l-primary bg-primary/10"
                 : "hover:bg-accent",
-              isOver && isDir && "border-primary bg-primary/10",
+              isOver && isDir && "border-l-primary bg-primary/10",
               isDragging && "opacity-40",
             )}
           />
@@ -836,7 +851,7 @@ const DownloadingRow = memo(function DownloadingRow({ job }: { job: DownloadJob 
   const label = done ? t.files.almostThere : phaseLabel(job, t);
 
   return (
-    <div className="grid grid-cols-[1fr_6rem_9rem] items-center gap-3 rounded-lg px-2 py-1.5 text-sm">
+    <div className="grid grid-cols-[1fr_6rem_9rem] items-center gap-3 border-l-2 border-transparent py-2 pr-3 pl-3 text-sm">
       <span className="flex min-w-0 items-center gap-2">
         <Loader2 className="size-4 shrink-0 animate-spin text-primary" />
         <span className="truncate" title={job.title ?? job.url}>
@@ -869,7 +884,11 @@ function ColumnHeaders({
   ];
 
   return (
-    <div className="sticky top-0 z-10 grid grid-cols-[1fr_6rem_9rem] gap-3 border-b bg-background px-2 pb-1.5 text-xs text-muted-foreground">
+    // Outside the scrolling region now, so it needs no sticky positioning at
+    // all. `pl-[calc(0.75rem+2px)]`: a row carries a 2px selection bar on its
+    // left, so the header needs the same offset or the columns sit two pixels
+    // off.
+    <div className="grid shrink-0 grid-cols-[1fr_6rem_9rem] gap-3 border-b bg-card py-2 pr-3 pl-[calc(0.75rem+2px)] text-xs font-medium text-muted-foreground">
       {columns.map(([key, label, alignRight]) => (
         <button
           key={key}
@@ -1715,6 +1734,20 @@ export function FileManager() {
 
   const nothingToShow = !isLoading && tiles.length === 0;
 
+  /**
+   * The marquee's handlers, put on whichever element actually scrolls.
+   *
+   * The grid scrolls the pane; the list scrolls inside its own card. The
+   * selection maths reads `scrollRef`, so the two have to agree on which
+   * element that is.
+   */
+  const surfaceHandlers = {
+    onPointerDown: onSurfacePointerDown,
+    onPointerMove: onSurfacePointerMove,
+    onPointerUp: endMarquee,
+    onPointerCancel: endMarquee,
+  };
+
   return (
     <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
       <div className="flex h-full flex-col">
@@ -1820,14 +1853,20 @@ export function FileManager() {
         <ContextMenu>
           <ContextMenuTrigger
             render={
+              // In list view the pane does not scroll: the card inside it
+              // does. That is what lets the card sit away from every edge and
+              // still keep its header pinned — a sticky header inside a padded
+              // scroller cannot rise above that padding, so it left a band the
+              // rows scrolled through, and removing the padding glued the card
+              // to the top. Scrolling within the card has neither problem.
               <div
-                ref={scrollRef}
+                ref={view === "list" ? undefined : scrollRef}
                 data-selection-surface=""
-                className="relative flex-1 overflow-auto p-4"
-                onPointerDown={onSurfacePointerDown}
-                onPointerMove={onSurfacePointerMove}
-                onPointerUp={endMarquee}
-                onPointerCancel={endMarquee}
+                className={cn(
+                  "relative flex-1 p-4",
+                  view === "list" ? "overflow-hidden" : "overflow-auto",
+                )}
+                {...(view === "list" ? {} : surfaceHandlers)}
               />
             }
           >
@@ -1841,7 +1880,13 @@ export function FileManager() {
                 {t.files.emptyHint}
               </div>
             ) : view === "list" ? (
-              <div data-selection-surface="" className="flex flex-col">
+              // A bordered card with its rows divided by hairlines — the same
+              // shape as the groups list and the activity log — filling the
+              // pane and scrolling its own contents.
+              // `max-h-full`, not `h-full`: three files get a card three rows
+              // tall, and only a folder with more than fits the pane grows to
+              // it and scrolls inside.
+              <div className="flex max-h-full flex-col overflow-hidden rounded-xl border bg-card">
                 <ColumnHeaders
                   sortKey={sortKey}
                   sortAsc={sortAsc}
@@ -1855,6 +1900,15 @@ export function FileManager() {
                     }
                   }}
                 />
+                <div
+                  ref={scrollRef}
+                  data-selection-surface=""
+                  // `min-h-0`: without it a flex child refuses to shrink
+                  // below its content, and the card would grow past the pane
+                  // instead of scrolling.
+                  className="flex min-h-0 flex-col divide-y divide-border/60 overflow-auto"
+                  {...surfaceHandlers}
+                >
                 {rows.map((tile) =>
                   tile.job ? (
                     <DownloadingRow key={tile.key} job={tile.job} />
@@ -1878,6 +1932,7 @@ export function FileManager() {
                     />
                   ),
                 )}
+                </div>
               </div>
             ) : (
               // Keyed by path: navigating replaces the grid rather than
