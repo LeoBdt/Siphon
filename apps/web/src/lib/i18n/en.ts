@@ -430,6 +430,7 @@ export const en = {
           "Downloads this account may run at once, within the instance limit.",
         unlimited: "Unlimited",
         instanceValue: (n: number) => `Instance setting (${n})`,
+        instanceSetting: "Instance setting",
         instanceCeiling: (n: number) => `instance maximum (${n})`,
         custom: "Limit",
         unitGb: "GB",
@@ -561,6 +562,10 @@ export const en = {
       fileCount: (n: number) => `${n} file${n > 1 ? "s" : ""}`,
       outcome: (done: number, failed: number) => `${done} done, ${failed} failed`,
       chartTitle: "Downloads per day",
+      volumeTitle: "Downloaded volume, cumulative",
+      volumeHint:
+        "The total fetched over thirty days. This is not disk usage: a deleted file was still downloaded.",
+      presetTitle: "By quality",
       chartEmpty: "No downloads in the last thirty days.",
       downloads: (n: number) => `${n} download${n > 1 ? "s" : ""}`,
       peak: (n: number) => `up to ${n} a day`,
@@ -571,6 +576,9 @@ export const en = {
     audit: {
       changeCount: (n: number) => `· ${n} change${n > 1 ? "s" : ""}`,
       unset: "unset",
+      inherited: "inherited",
+      allowed: "allowed",
+      denied: "denied",
       fields: {
         username: "Username",
         displayName: "Display name",

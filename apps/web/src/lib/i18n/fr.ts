@@ -410,6 +410,7 @@ export const fr: Dictionary = {
           "Nombre de téléchargements que ce compte peut lancer en parallèle, dans la limite de l'instance.",
         unlimited: "Illimité",
         instanceValue: (n: number) => `Réglage de l'instance (${n})`,
+        instanceSetting: "Réglage de l'instance",
         instanceCeiling: (n: number) => `maximum de l'instance (${n})`,
         custom: "Limite",
         unitGb: "Go",
@@ -540,6 +541,10 @@ export const fr: Dictionary = {
       outcome: (done: number, failed: number) =>
         `${done} réussi${done > 1 ? "s" : ""}, ${failed} échoué${failed > 1 ? "s" : ""}`,
       chartTitle: "Téléchargements par jour",
+      volumeTitle: "Volume téléchargé, cumulé",
+      volumeHint:
+        "Le total téléchargé depuis trente jours. Ce n'est pas l'espace occupé : un fichier supprimé reste téléchargé.",
+      presetTitle: "Par qualité",
       chartEmpty: "Aucun téléchargement ces trente derniers jours.",
       downloads: (n: number) => `${n} téléchargement${n > 1 ? "s" : ""}`,
       peak: (n: number) => `jusqu'à ${n} par jour`,
@@ -550,6 +555,9 @@ export const fr: Dictionary = {
     audit: {
       changeCount: (n: number) => `· ${n} changement${n > 1 ? "s" : ""}`,
       unset: "non défini",
+      inherited: "hérité",
+      allowed: "autorisé",
+      denied: "refusé",
       fields: {
         username: "Identifiant",
         displayName: "Nom affiché",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ChevronDown,
@@ -409,6 +409,8 @@ function UserDialog({
   const [typed, setTyped] = useState("");
   /** Asked when closing would throw away an unsaved change. */
   const [leaving, setLeaving] = useState(false);
+  /** Whether the form should close once that question has left the screen. */
+  const closeAfter = useRef(false);
   const [draft, setDraft] = useState<UserDraft | null>(null);
   // Follow the account the dialog was opened on, and any change made to it
   // elsewhere — but never while it is being edited here.
@@ -416,6 +418,9 @@ function UserDialog({
   if (user && syncedId !== user.id) {
     setSyncedId(user.id);
     setDraft(draftOf(user));
+    // Cleared with the account: a footer left asking about unsaved changes
+    // would greet whoever opens the next one.
+    setLeaving(false);
   }
   // The issued link, held so it can be read and sent rather than caught in a
   // toast. Cleared with the dialog: it is one account's link, not the page's.
@@ -445,6 +450,7 @@ function UserDialog({
       {
         onSuccess: () => {
           toast.success(u.saved);
+          setLeaving(false);
           then?.();
         },
         onError: fail,
@@ -659,7 +665,13 @@ function UserDialog({
             <Button variant="outline" onClick={requestClose}>
               {t.common.cancel}
             </Button>
-            <Button disabled={!dirty || !draft.username.trim() || save.isPending} onClick={() => commit()}>
+            {/* Saving is finishing: there is nothing left to do in the form,
+                and leaving it open invited a second look for a change that had
+                already been applied. */}
+            <Button
+              disabled={!dirty || !draft.username.trim() || save.isPending}
+              onClick={() => commit(() => onOpenChange(false))}
+            >
               {save.isPending && <Loader2 className="size-4 animate-spin" />}
               {t.common.save}
             </Button>
@@ -667,10 +679,26 @@ function UserDialog({
         </DialogContent>
       </Dialog>
 
-      {/* Closing with something pending. Three ways out rather than two: the
-          usual mistake is meaning to close and losing the edit, and the usual
-          fix is offering to save it on the way. */}
-      <Dialog open={leaving} onOpenChange={setLeaving}>
+      {/*
+        Closing with something pending. Three ways out rather than two: the
+        usual mistake is meaning to close and losing the edit, and the usual
+        fix is offering to save it on the way.
+
+        The form underneath is closed from `onOpenChangeComplete` — once this
+        one has actually finished leaving — and never in the same breath.
+        Tearing down two overlays together left the page blocked for as long
+        as the outgoing one animated, which is seconds of a reopened form
+        refusing every click.
+      */}
+      <Dialog
+        open={leaving}
+        onOpenChange={setLeaving}
+        onOpenChangeComplete={(open: boolean) => {
+          if (open || !closeAfter.current) return;
+          closeAfter.current = false;
+          onOpenChange(false);
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{u.dialog.unsavedTitle}</DialogTitle>
@@ -684,9 +712,9 @@ function UserDialog({
               variant="ghost"
               className="text-destructive hover:text-destructive"
               onClick={() => {
-                setLeaving(false);
                 setDraft(draftOf(user));
-                onOpenChange(false);
+                closeAfter.current = true;
+                setLeaving(false);
               }}
             >
               {u.dialog.discard}
@@ -695,8 +723,8 @@ function UserDialog({
               disabled={save.isPending}
               onClick={() =>
                 commit(() => {
+                  closeAfter.current = true;
                   setLeaving(false);
-                  onOpenChange(false);
                 })
               }
             >
@@ -711,7 +739,17 @@ function UserDialog({
         Deleting takes the files with it, so it asks for the name to be typed.
         A second button to click is not a second thought; typing the name is.
       */}
-      <Dialog open={confirming} onOpenChange={setConfirming}>
+      <Dialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        // The same sequencing: the account is gone, but this overlay leaves
+        // before the form behind it does.
+        onOpenChangeComplete={(open: boolean) => {
+          if (open || !closeAfter.current) return;
+          closeAfter.current = false;
+          onOpenChange(false);
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{u.deleteTitle(personName(user))}</DialogTitle>
@@ -733,8 +771,8 @@ function UserDialog({
               onClick={() =>
                 remove.mutate(user.id, {
                   onSuccess: () => {
+                    closeAfter.current = true;
                     setConfirming(false);
-                    onOpenChange(false);
                     toast.success(u.deleted);
                   },
                   onError: fail,
@@ -799,7 +837,7 @@ function UserStats({
             // own; repeating the instance-wide gauge here would be a number
             // about the server pretending to be about the person.
             value={
-              stats.scoped ? formatBytes(stats.diskBytes, intl) : u.wholeLibrary
+              formatBytes(stats.diskBytes, intl)
             }
           />
           <Stat label={u.fileCount} value={String(stats.fileCount)} />
@@ -862,10 +900,12 @@ export function GroupsTab() {
    */
   const [groupDraft, setGroupDraft] = useState<Permissions | null>(null);
   const [leavingGroup, setLeavingGroup] = useState(false);
+  const closeGroupAfter = useRef(false);
   const [syncedGroup, setSyncedGroup] = useState<string | null>(null);
   if (current && syncedGroup !== current.id) {
     setSyncedGroup(current.id);
     setGroupDraft({ ...current.permissions });
+    setLeavingGroup(false);
   }
 
   const groupDirty =
@@ -883,6 +923,7 @@ export function GroupsTab() {
       {
         onSuccess: () => {
           toast.success(t.settings.users.saved);
+          setLeavingGroup(false);
           then?.();
         },
         onError: (e) => toast.error(errorMessage(e)),
@@ -1038,7 +1079,7 @@ export function GroupsTab() {
               </Button>
               <Button
                 disabled={!groupDirty || save.isPending}
-                onClick={() => commitGroup()}
+                onClick={() => commitGroup(() => setEditing(null))}
               >
                 {save.isPending && <Loader2 className="size-4 animate-spin" />}
                 {t.common.save}
@@ -1048,7 +1089,17 @@ export function GroupsTab() {
         </Dialog>
       )}
 
-      <Dialog open={leavingGroup} onOpenChange={setLeavingGroup}>
+      {/* Sequenced like the account dialog's: this one leaves first, and the
+          form underneath closes only once it has. */}
+      <Dialog
+        open={leavingGroup}
+        onOpenChange={setLeavingGroup}
+        onOpenChangeComplete={(open: boolean) => {
+          if (open || !closeGroupAfter.current) return;
+          closeGroupAfter.current = false;
+          setEditing(null);
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{t.settings.users.dialog.unsavedTitle}</DialogTitle>
@@ -1064,9 +1115,9 @@ export function GroupsTab() {
               variant="ghost"
               className="text-destructive hover:text-destructive"
               onClick={() => {
+                if (current) setGroupDraft({ ...current.permissions });
+                closeGroupAfter.current = true;
                 setLeavingGroup(false);
-                setGroupDraft(null);
-                setEditing(null);
               }}
             >
               {t.settings.users.dialog.discard}
@@ -1075,8 +1126,8 @@ export function GroupsTab() {
               disabled={save.isPending}
               onClick={() =>
                 commitGroup(() => {
+                  closeGroupAfter.current = true;
                   setLeavingGroup(false);
-                  setEditing(null);
                 })
               }
             >
@@ -1144,23 +1195,30 @@ export function InvitesTab() {
               passed one was abrupt, and it took the typed name with it. It
               stays where it was, says why it is unavailable, and remembers
               what was in it. */}
-          <div
-            className={cn(
-              "flex flex-col gap-1.5 transition-opacity duration-200",
-              maxUses > 1 && "opacity-50",
-            )}
-          >
+          <div className="flex flex-col gap-1.5">
             <label htmlFor="invite-label" className="text-sm font-medium">
               {i.forWhom}
             </label>
+            {/* The field is what becomes unavailable, so the field is what
+                dims. Fading the explanation along with it made the one thing
+                worth reading the hardest thing to read. */}
             <Input
               id="invite-label"
               value={label}
               disabled={maxUses > 1}
               onChange={(e) => setLabel(e.target.value)}
               placeholder={i.forWhomPlaceholder}
+              className={cn(
+                "transition-opacity duration-200",
+                maxUses > 1 && "opacity-50",
+              )}
             />
-            <p className="text-xs text-muted-foreground">
+            <p
+              className={cn(
+                "text-xs",
+                maxUses > 1 ? "text-foreground" : "text-muted-foreground",
+              )}
+            >
               {maxUses > 1 ? i.forWhomShared : i.forWhomHint}
             </p>
           </div>
@@ -1443,10 +1501,10 @@ function ActivityRow({ entry }: { entry: AuditEntry }) {
                 <li key={`${change.field}-${i}`} className="flex flex-wrap gap-1.5">
                   <span className="font-medium">{auditFieldName(change.field, t)}</span>
                   <span className="text-muted-foreground line-through">
-                    {change.from ?? a.unset}
+                    {auditValue(change.field, change.from, t, intl)}
                   </span>
                   <span className="text-muted-foreground">→</span>
-                  <span>{change.to ?? a.unset}</span>
+                  <span>{auditValue(change.field, change.to, t, intl)}</span>
                 </li>
               ))}
             </ul>
@@ -1455,6 +1513,39 @@ function ActivityRow({ entry }: { entry: AuditEntry }) {
       )}
     </>
   );
+}
+
+/**
+ * A recorded value, said the way the form said it.
+ *
+ * The server stores what it had — a number of bytes, a boolean, or nothing —
+ * because a register must not depend on today's wording. But "nothing" means
+ * something different in every row: for a permission it is the group's answer,
+ * for a quota it is no limit at all, and for simultaneous downloads it is the
+ * instance's own figure. Printing "unset" for all three said none of them.
+ */
+function auditValue(
+  field: string,
+  value: string | null,
+  t: Dictionary,
+  intl: string,
+): string {
+  const u = t.settings.users;
+  if (value === null) {
+    if (field === "maxConcurrentDownloads") return u.limits.instanceSetting;
+    if (field === "quotaBytes" || field === "maxFileSizeBytes") {
+      return u.limits.unlimited;
+    }
+    if (field in u.permissions) return t.settings.audit.inherited;
+    return t.settings.audit.unset;
+  }
+  // Bytes are stored as bytes and read by people in gigabytes.
+  if (field === "quotaBytes" || field === "maxFileSizeBytes") {
+    return formatBytes(Number(value), intl);
+  }
+  if (value === "true") return t.settings.audit.allowed;
+  if (value === "false") return t.settings.audit.denied;
+  return value;
 }
 
 /**

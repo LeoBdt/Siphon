@@ -8,6 +8,7 @@ import type {
 import { useState } from "react";
 import { useI18n } from "@/components/i18n-provider";
 import { useSettings } from "@/lib/hooks";
+import { Checkbox } from "@/components/ui/checkbox";
 import { groupName } from "@/lib/groups";
 import { cn } from "@/lib/utils";
 
@@ -96,7 +97,10 @@ function TriControl({
             disabled={disabled}
             onClick={() => onChange(opt.key)}
             className={cn(
-              "flex items-center justify-center rounded-md px-1.5 text-xs font-medium whitespace-nowrap transition-colors duration-150",
+              // Transform as well as colour: a choice that only tinted itself gave
+              // no feedback under the pointer, and on a dense grid of them the
+              // click felt like it had missed.
+              "flex items-center justify-center rounded-md px-1.5 text-xs font-medium whitespace-nowrap transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.97]",
               active
                 ? opt.key === "deny"
                   ? "bg-destructive/15 text-destructive"
@@ -386,7 +390,10 @@ function LimitRow({
                 )
               }
               className={cn(
-                "flex items-center justify-center rounded-md px-1.5 text-xs font-medium whitespace-nowrap transition-colors duration-150",
+                // Transform as well as colour: a choice that only tinted itself gave
+              // no feedback under the pointer, and on a dense grid of them the
+              // click felt like it had missed.
+              "flex items-center justify-center rounded-md px-1.5 text-xs font-medium whitespace-nowrap transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.97]",
                 state === opt.key
                   ? "bg-background text-foreground shadow-sm"
                   : "text-foreground/60 hover:text-foreground",
@@ -528,7 +535,10 @@ export function GroupLimitGrid({
                       )
                     }
                     className={cn(
-                      "flex items-center justify-center rounded-md px-1.5 text-xs font-medium whitespace-nowrap transition-colors duration-150",
+                      // Transform as well as colour: a choice that only tinted itself gave
+              // no feedback under the pointer, and on a dense grid of them the
+              // click felt like it had missed.
+              "flex items-center justify-center rounded-md px-1.5 text-xs font-medium whitespace-nowrap transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.97]",
                       set === (opt.key === "set")
                         ? "bg-background text-foreground shadow-sm"
                         : "text-foreground/60 hover:text-foreground",
@@ -594,9 +604,7 @@ export function GroupPermissionGrid({
                 </span>
               )}
             </span>
-            <input
-              type="checkbox"
-              className="size-4 shrink-0 accent-primary"
+            <Checkbox
               checked={Boolean(permissions[flag])}
               disabled={disabled}
               onChange={(e) => onChange(flag, e.target.checked)}
