@@ -3,7 +3,7 @@ import { createReadStream } from "node:fs";
 import { extname, basename, join, dirname } from "node:path";
 import archiver from "archiver";
 import type { FastifyInstance, FastifyReply } from "fastify";
-import type { FileNode, ListDirResponse } from "@app/shared";
+import type { EntryInfo, FileNode, ListDirResponse } from "@app/shared";
 import {
   resolveInsideRoot,
   resolveExistingInsideRoot,
@@ -12,6 +12,8 @@ import {
   PathError,
 } from "../lib/paths.js";
 import { isTempArtifact } from "../lib/cleanup.js";
+import { dirUsage } from "../lib/dir-size.js";
+import { thumbnailFor } from "../lib/thumbnail.js";
 import { libraryRootFor, hiddenFrom } from "../auth/scope.js";
 import { privateDirs } from "../auth/store.js";
 import { requirePermission } from "../auth/guard.js";
@@ -113,6 +115,60 @@ export async function filesRoutes(app: FastifyInstance) {
       });
       const res: ListDirResponse = { path: normalizeRel(rel), entries };
       return res;
+    } catch (err) {
+      return handleError(reply, err);
+    }
+  });
+
+  /**
+   * What one entry actually is: the properties panel of a file manager.
+   *
+   * A folder's size is walked here rather than in the listing: a directory has
+   * no meaningful size until something adds up what is under it, and doing
+   * that for every row of every listing would turn opening a folder into a
+   * full tree walk.
+   */
+  app.get("/api/files/info", async (req, reply) => {
+    const rel = (req.query as { path?: string }).path ?? "";
+    try {
+      const base = libraryRootFor(req.user);
+      const abs = resolveExistingInsideRoot(rel, base);
+      const node = await toNode(dirname(abs), basename(abs), base);
+      if (node.type !== "directory") {
+        const res: EntryInfo = { node, contents: null };
+        return res;
+      }
+      const usage = await dirUsage(abs);
+      const res: EntryInfo = {
+        node: { ...node, sizeBytes: usage.bytes },
+        contents: { files: usage.files, folders: usage.folders },
+      };
+      return res;
+    } catch (err) {
+      return handleError(reply, err);
+    }
+  });
+
+  /**
+   * A small preview image for one file.
+   *
+   * 404 when there is nothing to show, which the interface reads as "use the
+   * icon" — an audio file with no cover art is the ordinary case, not an
+   * error. Cached hard on the client too: the URL carries the file's
+   * modification time, so a different file is a different URL.
+   */
+  app.get("/api/files/thumb", async (req, reply) => {
+    const rel = (req.query as { path?: string }).path ?? "";
+    try {
+      const abs = resolveExistingInsideRoot(rel, libraryRootFor(req.user));
+      const thumb = await thumbnailFor(abs);
+      if (!thumb) {
+        return reply.code(404).send({ code: "not_found", error: "No preview" });
+      }
+      return reply
+        .header("Content-Type", "image/jpeg")
+        .header("Cache-Control", "private, max-age=86400")
+        .send(createReadStream(thumb));
     } catch (err) {
       return handleError(reply, err);
     }

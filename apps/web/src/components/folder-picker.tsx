@@ -30,11 +30,16 @@ export function FolderPicker({
   onOpenChange,
   initialPath = "",
   onSelect,
+  title,
+  confirmLabel,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   initialPath?: string;
   onSelect: (path: string) => void;
+  /** Defaults to picking a download's destination. */
+  title?: string;
+  confirmLabel?: string;
 }) {
   const t = useT();
   const [current, setCurrent] = useState(initialPath);
@@ -58,7 +63,7 @@ export function FolderPicker({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Dossier de destination</DialogTitle>
+          <DialogTitle>{title ?? t.files.destinationTitle}</DialogTitle>
         </DialogHeader>
 
         {/* Breadcrumb */}
@@ -68,7 +73,7 @@ export function FolderPicker({
             className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-muted"
           >
             <Home className="size-3.5" />
-            Racine
+            {t.files.root}
           </button>
           {segments.map((seg, i) => {
             const p = segments.slice(0, i + 1).join("/");
@@ -94,7 +99,7 @@ export function FolderPicker({
             </div>
           ) : folders.length === 0 ? (
             <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">
-              Aucun sous-dossier
+              {t.files.noSubfolders}
             </div>
           ) : (
             <ul className="p-1">
@@ -141,13 +146,13 @@ export function FolderPicker({
             onClick={() => setCreating(true)}
           >
             <FolderPlus className="size-4" />
-            Nouveau dossier
+            {t.files.newFolder}
           </Button>
         )}
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Annuler
+            {t.common.cancel}
           </Button>
           <Button
             onClick={() => {
@@ -155,7 +160,7 @@ export function FolderPicker({
               onOpenChange(false);
             }}
           >
-            Choisir ce dossier
+            {confirmLabel ?? t.files.chooseFolder}
           </Button>
         </DialogFooter>
       </DialogContent>

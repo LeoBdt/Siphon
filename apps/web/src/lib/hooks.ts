@@ -21,6 +21,7 @@ import type {
   CreateDownloadRequest,
   DiskUsage,
   DownloadJob,
+  EntryInfo,
   ReleaseCheck,
   ListDirResponse,
   VideoInfo,
@@ -152,6 +153,21 @@ export function useFiles(path: string) {
       apiFetch<ListDirResponse>(
         `/api/files?path=${encodeURIComponent(path)}`,
       ),
+  });
+}
+
+/**
+ * One entry's properties, fetched when the panel opens.
+ *
+ * Never part of a listing: a folder's size means walking everything under it,
+ * which is fine for one entry on request and ruinous for every row.
+ */
+export function useEntryInfo(path: string | null) {
+  return useQuery({
+    queryKey: ["file-info", path],
+    queryFn: () =>
+      apiFetch<EntryInfo>(`/api/files/info?path=${encodeURIComponent(path!)}`),
+    enabled: path !== null,
   });
 }
 

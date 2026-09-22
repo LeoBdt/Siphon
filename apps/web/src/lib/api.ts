@@ -61,6 +61,19 @@ export function streamUrl(path: string): string {
   return apiUrl(`/api/files/stream?path=${encodeURIComponent(path)}`);
 }
 
+/**
+ * URL of a file's preview image.
+ *
+ * The modification time is part of the URL so the browser may cache it hard:
+ * replace the file and the address changes, which is the only cache
+ * invalidation anyone can rely on.
+ */
+export function thumbUrl(path: string, modifiedAt: string): string {
+  return apiUrl(
+    `/api/files/thumb?path=${encodeURIComponent(path)}&v=${encodeURIComponent(modifiedAt)}`,
+  );
+}
+
 /** URL to download a file (attachment) or folder (zip). */
 export function downloadUrl(path: string): string {
   return apiUrl(`/api/files/download?path=${encodeURIComponent(path)}`);
