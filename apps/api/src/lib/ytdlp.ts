@@ -219,6 +219,12 @@ export interface RunDownloadOptions {
   preset: QualityPresetId;
   advanced?: AdvancedFormat | null;
   destDir: string;
+  /**
+   * The filename to write, without extension. Claimed in advance by
+   * `reserveOutputStem` so collisions are resolved before yt-dlp runs — left
+   * to itself, it skips a download whose name is already on disk.
+   */
+  outputStem?: string | null;
   onProgress?: (p: DownloadProgress) => void;
   onLog?: (line: string) => void;
 }
@@ -237,7 +243,13 @@ const ANSI_RE = new RegExp(
 );
 
 export function runDownload(opts: RunDownloadOptions): RunDownloadHandle {
-  const outTemplate = "%(title).200B [%(id)s].%(ext)s";
+  // A literal name when one was claimed for us, so `%` in a title cannot be
+  // read back as a field — yt-dlp expands the output string it is given.
+  // Without one (a path nothing reserved), fall back to the title, and keep
+  // the id only as the tie-breaker it always was.
+  const outTemplate = opts.outputStem
+    ? `${opts.outputStem.replace(/%/g, "%%")}.%(ext)s`
+    : "%(title).200B [%(id)s].%(ext)s";
   const args = [
     ...baseArgs(),
     ...presetToArgs(opts.preset, opts.advanced),
