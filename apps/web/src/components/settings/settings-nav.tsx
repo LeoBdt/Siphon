@@ -125,7 +125,14 @@ export function SettingsNav() {
                 >
                   {active && (
                     <motion.span
-                      layoutId="settings-nav-thumb"
+                      // One pill per group, not one for the whole navigation.
+                      // A single shared id made it travel the full height on
+                      // every change, sliding across the group headings on the
+                      // way — which read as though those headings were
+                      // themselves targets. Moving between groups is a jump,
+                      // not a journey, so it now fades from one list to the
+                      // other and only ever slides within a list.
+                      layoutId={`settings-nav-thumb-${group.key}`}
                       layoutDependency={pathname}
                       transition={{ duration: 0.22, ease: EASE_OUT }}
                       // On the card surface a white pill no longer stands

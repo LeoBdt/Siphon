@@ -682,9 +682,10 @@ function UserStats({
   return (
     <div className="border-t pt-3">
       <div className="flex items-center gap-2">
-        <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-          {u.dialog.usage}
-        </h4>
+        {/* The same weight as every other heading in this dialog: it was the
+            one section title in small grey capitals, which read as a footnote
+            rather than as a peer of "Identity" and "Limits". */}
+        <h4 className="text-sm font-semibold">{u.dialog.usage}</h4>
         <Button
           size="sm"
           variant="outline"
@@ -980,8 +981,12 @@ export function InvitesTab() {
           )}
 
           <div className="flex flex-wrap items-end gap-2">
-            <Select value={groupId} onValueChange={(v) => v && setGroupId(v)}>
-              <SelectTrigger className="h-9 w-44">
+            <div className="flex flex-col gap-1">
+              <label htmlFor="invite-group" className="text-xs text-muted-foreground">
+                {i.group}
+              </label>
+              <Select value={groupId} onValueChange={(v) => v && setGroupId(v)}>
+              <SelectTrigger id="invite-group" className="h-9 w-44">
                 <SelectValue>
                   {(v: string) => groupName(groups?.find((g) => g.id === v), t, v)}
                 </SelectValue>
@@ -993,7 +998,8 @@ export function InvitesTab() {
                   </SelectItem>
                 ))}
               </SelectContent>
-            </Select>
+              </Select>
+            </div>
 
             <div className="flex flex-col gap-1">
               <label htmlFor="invite-uses" className="text-xs text-muted-foreground">

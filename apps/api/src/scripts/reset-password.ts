@@ -16,8 +16,11 @@
  *   pnpm --filter @app/api reset-password <username>         # print a link
  *   pnpm --filter @app/api reset-password <username> --password <pw>
  *
- * In Docker: docker compose exec api node --import tsx \
- *              apps/api/src/scripts/reset-password.ts <username>
+ * In Docker, calling the binary by its path — `tsx` is installed for this
+ * package, not at the root of the image, so `node --import tsx` cannot find it:
+ *
+ *   docker compose exec api apps/api/node_modules/.bin/tsx \
+ *     apps/api/src/scripts/reset-password.ts <username>
  */
 import { MIN_PASSWORD_LENGTH } from "@app/shared";
 import { db, getSetting } from "../db.js";

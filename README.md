@@ -130,11 +130,15 @@ and no email to send a link to: Siphon sends no mail and knows no address.
 Proof of ownership is access to the machine it runs on.
 
 ```bash
-docker compose exec api node --import tsx \
+docker compose exec api apps/api/node_modules/.bin/tsx \
   apps/api/src/scripts/reset-password.ts            # list the accounts
-docker compose exec api node --import tsx \
+docker compose exec api apps/api/node_modules/.bin/tsx \
   apps/api/src/scripts/reset-password.ts <username> # print a reset link
 ```
+
+The binary is called by its path because `tsx` is installed for the API
+package, not at the root of the image: `node --import tsx` looks for it beside
+the working directory and reports that it cannot find the package.
 
 It works on any account, but it is the administrator's way back in — anyone
 else is better served by the interface, which needs no shell on the server.
