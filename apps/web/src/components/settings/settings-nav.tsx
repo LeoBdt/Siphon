@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 interface Section {
   key:
     | "profile"
+    | "stats"
     | "security"
     | "appearance"
     | "downloads"
@@ -42,6 +43,7 @@ const GROUPS: { key: "mine" | "instance" | "accounts"; sections: Section[] }[] =
     key: "mine",
     sections: [
       { key: "profile", href: "/settings/profile" },
+      { key: "stats", href: "/settings/stats" },
       { key: "security", href: "/settings/security" },
       { key: "appearance", href: "/settings/appearance" },
     ],

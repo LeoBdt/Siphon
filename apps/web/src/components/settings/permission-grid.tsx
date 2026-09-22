@@ -7,6 +7,7 @@ import type {
 } from "@app/shared";
 import { useState } from "react";
 import { useI18n } from "@/components/i18n-provider";
+import { useSettings } from "@/lib/hooks";
 import { groupName } from "@/lib/groups";
 import { cn } from "@/lib/utils";
 
@@ -241,10 +242,13 @@ function fromDisplay(limit: Limit, value: number): number {
 function LimitInput({
   limit,
   value,
+  max,
   onCommit,
 }: {
   limit: Limit;
   value: number;
+  /** A ceiling the field itself refuses to cross, in display units. */
+  max?: number;
   onCommit: (displayValue: number) => void;
 }) {
   const [text, setText] = useState(String(toDisplay(limit, value)));
@@ -262,6 +266,7 @@ function LimitInput({
       // while the value is held as text so the field can be emptied.
       type="number"
       min={limit === "maxConcurrentDownloads" ? 1 : 0.1}
+      max={max}
       step={limit === "maxConcurrentDownloads" ? 1 : 0.1}
       inputMode="decimal"
       value={text}
@@ -269,7 +274,11 @@ function LimitInput({
         const next = e.target.value;
         setText(next);
         const n = Number(next.replace(",", "."));
-        if (next.trim() !== "" && Number.isFinite(n) && n > 0) onCommit(n);
+        // Clamped rather than refused: typing 20 into a field that stops at 8
+        // should leave 8, not an error and a number nobody can act on.
+        if (next.trim() !== "" && Number.isFinite(n) && n > 0) {
+          onCommit(max != null ? Math.min(n, max) : n);
+        }
       }}
       onBlur={() => setText(String(toDisplay(limit, value)))}
       className="h-9 w-24 rounded-md border bg-background px-2.5 text-sm tabular-nums"
@@ -290,6 +299,7 @@ function LimitRow({
   value,
   inheritedValue,
   groupName,
+  instanceLimit,
   onChange,
 }: {
   limit: Limit;
@@ -297,6 +307,8 @@ function LimitRow({
   value: number | null | undefined;
   inheritedValue: number | null;
   groupName: string | undefined;
+  /** How many downloads this instance runs at once — a ceiling on anyone's. */
+  instanceLimit: number;
   onChange: (next: number | null | undefined) => void;
 }) {
   const { t, intl } = useI18n();
@@ -305,9 +317,20 @@ function LimitRow({
   const state: "inherit" | "unlimited" | "set" =
     value === undefined ? "inherit" : value === null ? "unlimited" : "set";
 
+  /**
+   * Simultaneous downloads can never be unlimited.
+   *
+   * The queue runs a fixed number at once whatever anyone is granted, so
+   * "unlimited" was a promise the machine does not keep. There are two honest
+   * states: take the instance's figure, or set a lower one.
+   */
+  const noUnlimited = limit === "maxConcurrentDownloads";
+
   const describe = (v: number | null) =>
     v === null
-      ? u.limits.unlimited
+      ? noUnlimited
+        ? u.limits.instanceValue(instanceLimit)
+        : u.limits.unlimited
       : limit === "maxConcurrentDownloads"
         ? String(v)
         : `${new Intl.NumberFormat(intl, { maximumFractionDigits: 2 }).format(v / GB)} ${u.limits.unitGb}`;
@@ -327,7 +350,10 @@ function LimitRow({
       <div className="flex flex-wrap items-center gap-2">
         <div
           role="radiogroup"
-          className="grid h-9 w-[20rem] shrink-0 grid-cols-[1.7fr_1fr_1fr] gap-0.5 rounded-lg border bg-muted/40 p-0.5"
+          className={cn(
+            "grid h-9 w-[20rem] shrink-0 gap-0.5 rounded-lg border bg-muted/40 p-0.5",
+            noUnlimited ? "grid-cols-[1.7fr_1fr]" : "grid-cols-[1.7fr_1fr_1fr]",
+          )}
         >
           {(
             [
@@ -337,7 +363,9 @@ function LimitRow({
                   ? u.tri.inheritedValue(describe(inheritedValue))
                   : u.tri.inherit,
               },
-              { key: "unlimited" as const, label: u.limits.unlimited },
+              ...(noUnlimited
+                ? []
+                : [{ key: "unlimited" as const, label: u.limits.unlimited }]),
               { key: "set" as const, label: u.limits.custom },
             ]
           ).map((opt) => (
@@ -374,9 +402,16 @@ function LimitRow({
             <LimitInput
               limit={limit}
               value={value as number}
+              max={noUnlimited ? instanceLimit : undefined}
               onCommit={(n) => onChange(fromDisplay(limit, n))}
             />
             <span className="text-xs text-muted-foreground">{unit}</span>
+            {/* Said where the number is typed, not after it is refused. */}
+            {noUnlimited && (value as number) >= instanceLimit && (
+              <span className="text-xs text-amber-600 dark:text-amber-500">
+                {u.limits.instanceCeiling(instanceLimit)}
+              </span>
+            )}
           </span>
         )}
       </div>
@@ -397,6 +432,9 @@ export function UserLimitGrid({
   onChange: (limit: Limit, value: number | null | undefined) => void;
 }) {
   const { t } = useI18n();
+  // The instance's own concurrency, which no account may be granted past.
+  const { data: settings } = useSettings();
+  const instanceLimit = settings?.maxConcurrentDownloads ?? 1;
   // An administrator has no quota and no ceiling — the role resolves to
   // unlimited on the server, so offering a figure here would be a promise the
   // system does not keep.
@@ -419,6 +457,7 @@ export function UserLimitGrid({
           value={limit in overrides && overrides[limit] !== null ? overrides[limit] : undefined}
           inheritedValue={group?.permissions[limit] ?? null}
           groupName={group?.name}
+          instanceLimit={instanceLimit}
           onChange={(next) => onChange(limit, next)}
         />
       ))}
@@ -438,10 +477,15 @@ export function GroupLimitGrid({
 }) {
   const { t } = useI18n();
   const u = t.settings.users;
+  const { data: settings } = useSettings();
+  const instanceLimit = settings?.maxConcurrentDownloads ?? 1;
   return (
     <div className={cn("flex flex-col divide-y", disabled && "pointer-events-none opacity-50")}>
       {LIMITS.map((limit) => {
         const set = permissions[limit] !== null;
+        // As on an account: the queue runs a fixed number at once, so
+        // "unlimited" here would be a figure the machine never honours.
+        const noUnlimited = limit === "maxConcurrentDownloads";
         return (
           <div key={limit} className="flex flex-col gap-2 py-3">
             <div className="flex min-w-0 flex-col">
@@ -457,7 +501,12 @@ export function GroupLimitGrid({
               >
                 {(
                   [
-                    { key: "unlimited" as const, label: u.limits.unlimited },
+                    {
+                      key: "unlimited" as const,
+                      label: noUnlimited
+                        ? u.limits.instanceValue(instanceLimit)
+                        : u.limits.unlimited,
+                    },
                     { key: "set" as const, label: u.limits.custom },
                   ]
                 ).map((opt) => (
@@ -494,6 +543,7 @@ export function GroupLimitGrid({
                   <LimitInput
                     limit={limit}
                     value={permissions[limit] as number}
+                    max={noUnlimited ? instanceLimit : undefined}
                     onCommit={(n) => onChange(limit, fromDisplay(limit, n))}
                   />
                   <span className="text-xs text-muted-foreground">

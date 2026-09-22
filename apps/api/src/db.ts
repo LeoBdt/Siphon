@@ -335,6 +335,41 @@ function withChildCounts(jobs: DownloadJob[], withChildren: boolean): DownloadJo
  * deleted afterwards still shows in what was fetched; disk usage is measured
  * separately, from the folder itself.
  */
+/**
+ * Downloads per day over a window, for the little chart on the stats page.
+ *
+ * Grouped in SQL rather than by reading every row: the answer is thirty
+ * numbers, and carrying a year of history into JavaScript to count it would be
+ * absurd. Days with nothing are absent here and filled in by the caller — SQL
+ * cannot invent rows that do not exist, and a chart with holes lies about the
+ * shape of the thing.
+ */
+export function dailyDownloadsFor(
+  userId: string,
+  days: number,
+): { date: string; count: number; bytes: number }[] {
+  const since = new Date(Date.now() - days * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  return db
+    .prepare(
+      `SELECT substr(createdAt, 1, 10)                     AS date,
+              COUNT(*)                                     AS count,
+              COALESCE(SUM(CASE WHEN status = 'completed'
+                                THEN fileSizeBytes END), 0) AS bytes
+         FROM downloads
+        WHERE userId = ? AND isPlaylistParent = 0
+          AND substr(createdAt, 1, 10) >= ?
+        GROUP BY date
+        ORDER BY date ASC`,
+    )
+    .all(userId, since) as unknown as {
+    date: string;
+    count: number;
+    bytes: number;
+  }[];
+}
+
 export function downloadStatsFor(userId: string): {
   total: number;
   completed: number;

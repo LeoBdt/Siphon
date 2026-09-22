@@ -14,6 +14,7 @@ import { CONCURRENCY_MAX, CONCURRENCY_MIN } from "@app/shared";
 import { config } from "../config.js";
 import {
   activeJobCount,
+  concurrencyCeiling,
   getMaxConcurrent,
   setMaxConcurrent,
 } from "../downloads-manager.js";
@@ -51,6 +52,7 @@ export async function systemRoutes(app: FastifyInstance) {
   // Current settings.
   app.get("/api/settings", async (): Promise<AppSettings> => ({
     maxConcurrentDownloads: getMaxConcurrent(),
+    concurrencyCeiling: concurrencyCeiling(),
     autoUpdateYtdlp: isAutoUpdateEnabled(),
   }));
 
@@ -74,10 +76,10 @@ export async function systemRoutes(app: FastifyInstance) {
       }
       // Rejected rather than silently clamped, so the client never shows a
       // value the server did not accept.
-      if (n < CONCURRENCY_MIN || n > CONCURRENCY_MAX) {
+      if (n < CONCURRENCY_MIN || n > concurrencyCeiling()) {
         return reply.code(400).send({
           code: "concurrency_out_of_range",
-          error: `maxConcurrentDownloads must be between ${CONCURRENCY_MIN} and ${CONCURRENCY_MAX}`,
+          error: `maxConcurrentDownloads must be between ${CONCURRENCY_MIN} and ${concurrencyCeiling()}`,
         } satisfies ApiErrorBody);
       }
       setMaxConcurrent(n);
@@ -89,6 +91,7 @@ export async function systemRoutes(app: FastifyInstance) {
 
     return {
       maxConcurrentDownloads: getMaxConcurrent(),
+      concurrencyCeiling: concurrencyCeiling(),
       autoUpdateYtdlp: isAutoUpdateEnabled(),
     } satisfies AppSettings;
   });

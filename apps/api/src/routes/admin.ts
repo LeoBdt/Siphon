@@ -10,8 +10,9 @@ import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { config } from "../config.js";
 import { listAudit, record } from "../auth/audit.js";
-import { downloadStatsFor, setSetting } from "../db.js";
-import { dirUsage } from "../lib/dir-size.js";
+import { setSetting } from "../db.js";
+import { statsFor } from "../lib/user-stats.js";
+import { diffFields } from "../lib/audit-diff.js";
 import { resolveInsideRoot } from "../lib/paths.js";
 import {
   GROUP_ADMIN_ID,
@@ -137,6 +138,18 @@ export async function adminRoutes(app: FastifyInstance) {
       actorName: req.user?.username,
       target: target.username,
       ip: req.ip,
+      // The password itself is never described, only that it changed — which
+      // the action already says.
+      details: [
+        ...diffFields(
+          { username: target.username, displayName: target.displayName, groupId: target.groupId },
+          { username: body.username, displayName: body.displayName, groupId: body.groupId },
+        ),
+        ...diffFields(
+          target.overrides as Record<string, unknown>,
+          body.overrides as Record<string, unknown>,
+        ),
+      ],
     });
     // Losing the permission has to actually un-hide the folder, and leave a
     // notice behind rather than let them find out by accident.
@@ -165,6 +178,7 @@ export async function adminRoutes(app: FastifyInstance) {
       actorName: req.user?.username,
       target: target.username,
       ip: req.ip,
+      details: [{ field: "lockout", from: "locked", to: "cleared" }],
     });
     return getUser(id);
   });
@@ -204,6 +218,13 @@ export async function adminRoutes(app: FastifyInstance) {
       actorName: req.user?.username,
       target: target.username,
       ip: req.ip,
+      details: [
+        {
+          field: "suspended",
+          from: String(target.suspended ?? false),
+          to: String(Boolean(suspended)),
+        },
+      ],
     });
     return updated;
   });
@@ -254,20 +275,9 @@ export async function adminRoutes(app: FastifyInstance) {
       reply.code(404).send({ code: "not_found", error: "Not found" });
       return undefined;
     }
-    // An administrator's own "folder" is the whole library, since that is what
-    // they browse; reporting it would restate the disk gauge on the same page.
-    const scoped = !target.effective.canBrowseWholeLibrary;
-    const usage = scoped
-      ? await dirUsage(join(config.rootDir, "users", target.libraryDir))
-      : { bytes: 0, files: 0, folders: 0 };
-    return {
-      userId: id,
-      scoped,
-      diskBytes: usage.bytes,
-      fileCount: usage.files,
-      folderCount: usage.folders,
-      ...downloadStatsFor(id),
-    };
+    // Built by the same function that answers a member asking about their own
+    // account, so the two can never disagree.
+    return statsFor(target);
   });
 
   /**
@@ -341,6 +351,9 @@ export async function adminRoutes(app: FastifyInstance) {
       name?: string;
       permissions?: Partial<Permissions>;
     };
+    // Read before the write: the log records the move from one value to the
+    // other, and after the update there is nothing left to compare against.
+    const before = listGroups().find((g) => g.id === id);
     const updated = updateGroup(id, body);
     record({
       action: "group.updated",
@@ -348,6 +361,13 @@ export async function adminRoutes(app: FastifyInstance) {
       actorName: req.user?.username,
       target: updated?.name ?? id,
       ip: req.ip,
+      details: [
+        ...diffFields({ name: before?.name }, { name: body.name }),
+        ...diffFields(
+          before?.permissions as unknown as Record<string, unknown>,
+          body.permissions as Record<string, unknown>,
+        ),
+      ],
     });
     // A group edit moves everyone in it at once.
     reconcilePrivacy();

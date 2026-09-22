@@ -10,6 +10,7 @@ import {
   tooManyAttempts,
 } from "../auth/guard.js";
 import { record } from "../auth/audit.js";
+import { statsFor } from "../lib/user-stats.js";
 import { generateSecret, otpauthUri, verifyCode } from "../auth/totp.js";
 import {
   acceptInvite,
@@ -170,6 +171,21 @@ export async function authRoutes(app: FastifyInstance) {
     const session = createSession(user.id);
     setSessionCookie(reply, session.id, session.expiresAt, session.csrfToken);
     return user;
+  });
+
+  /**
+   * One's own usage and limits.
+   *
+   * The administrator's view of an account has always existed; this is the
+   * same answer, about oneself, and it needs no permission — knowing how much
+   * of your own quota you have spent is not privileged information. It is
+   * built by the same function, so the two can never disagree.
+   */
+  app.get("/api/me/stats", async (req, reply) => {
+    if (!req.user) {
+      return reply.code(401).send({ code: "unauthorized", error: "Sign in" });
+    }
+    return statsFor(req.user);
   });
 
   /** Acknowledge a one-off notice so it stops being shown. */

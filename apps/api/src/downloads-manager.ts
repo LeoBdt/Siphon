@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { cpus } from "node:os";
 import { join } from "node:path";
 import { statSync } from "node:fs";
 import PQueue from "p-queue";
@@ -346,6 +347,20 @@ export function resumeInterruptedJobs(): number {
   return jobs.length;
 }
 
+/**
+ * The highest concurrency this machine will accept.
+ *
+ * One download is a yt-dlp process and, for anything that has to be merged or
+ * converted, an ffmpeg one after it — work the processor does, not the
+ * network. Past the core count nothing arrives sooner and everything else on
+ * the box slows down. The floor of 4 keeps a single-core container usable,
+ * since downloading is mostly waiting; the absolute cap is the shared one.
+ */
+export function concurrencyCeiling(): number {
+  const cores = cpus().length || 1;
+  return Math.min(CONCURRENCY_MAX, Math.max(4, cores));
+}
+
 /** Current queue concurrency. */
 export function getMaxConcurrent(): number {
   return queue.concurrency;
@@ -355,7 +370,7 @@ export function getMaxConcurrent(): number {
 export function setMaxConcurrent(n: number): number {
   const clamped = Math.max(
     CONCURRENCY_MIN,
-    Math.min(CONCURRENCY_MAX, Math.floor(n)),
+    Math.min(concurrencyCeiling(), Math.floor(n)),
   );
   queue.concurrency = clamped;
   setSetting("maxConcurrentDownloads", String(clamped));

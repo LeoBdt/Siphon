@@ -266,14 +266,31 @@ export interface ListDirResponse {
 // Settings & system
 // ---------------------------------------------------------------------------
 
-/** Accepted range for `maxConcurrentDownloads`, shared by the UI and the API. */
+/**
+ * Accepted range for `maxConcurrentDownloads`, shared by the UI and the API.
+ *
+ * The ceiling is an absolute one; the instance advertises a lower, hardware-
+ * derived figure through `concurrencyCeiling`, which is what the interface
+ * actually offers. Eight was a number picked by hand, and it was wrong in both
+ * directions: too many for a small box, needlessly few for a real server.
+ */
 export const CONCURRENCY_MIN = 1;
-export const CONCURRENCY_MAX = 8;
+export const CONCURRENCY_MAX = 16;
 
 /** User-tunable settings persisted server-side. */
 export interface AppSettings {
-  /** How many downloads run concurrently (CONCURRENCY_MIN..CONCURRENCY_MAX). */
+  /** How many downloads run concurrently (CONCURRENCY_MIN..concurrencyCeiling). */
   maxConcurrentDownloads: number;
+  /**
+   * The highest concurrency this machine will accept, read-only.
+   *
+   * Derived from the processor count rather than fixed, because each download
+   * is a yt-dlp process and often an ffmpeg one beside it: past the number of
+   * cores nothing downloads faster, the machine merely thrashes. It is also
+   * the ceiling on what any one account may be granted — a per-account limit
+   * above the instance's own would promise something the queue cannot give.
+   */
+  concurrencyCeiling: number;
   /**
    * Check for a newer yt-dlp on boot and once a day. On by default: the
    * overwhelming majority of download failures come from a yt-dlp that is too
@@ -582,6 +599,22 @@ export type AuditAction =
   /** An administrator issued a reset link for someone's account. */
   | "password.reset";
 
+/**
+ * One field an action changed.
+ *
+ * The values are already rendered as text by the server, because the point is
+ * to record what was true at that moment: a permission id resolved against
+ * today's groups would quietly rewrite history every time a group is renamed.
+ * `from` is null when the field had no value, which is not the same as having
+ * had the value "none".
+ */
+export interface AuditChange {
+  /** A key the client knows how to name, e.g. "canDownload" or "quotaBytes". */
+  field: string;
+  from: string | null;
+  to: string | null;
+}
+
 export interface AuditEntry {
   id: number;
   at: string;
@@ -591,6 +624,13 @@ export interface AuditEntry {
   /** What it was done to: a username, a group name, an invitation. */
   target: string | null;
   ip: string | null;
+  /**
+   * What actually changed, when the action was one that changes fields.
+   *
+   * Null on actions that have nothing to describe — a sign-in changes no
+   * field — and on rows recorded before this was kept.
+   */
+  details: AuditChange[] | null;
 }
 
 /**
@@ -620,6 +660,26 @@ export interface UserStats {
   /** Sum of the completed jobs' file sizes, including files since deleted. */
   bytesFetched: number;
   lastDownloadAt: string | null;
+  /**
+   * What this account is allowed, resolved — the group's value unless it has
+   * one of its own, and never above what the instance itself permits.
+   *
+   * Carried with the usage so the two can be shown together: a number of bytes
+   * means little until something says how many there may be.
+   */
+  quotaBytes: number | null;
+  maxFileSizeBytes: number | null;
+  /** Downloads at once, after the instance's own ceiling is applied. */
+  maxConcurrentDownloads: number;
+  /** True when the instance's ceiling, not this account's setting, decides. */
+  concurrencyCappedByInstance: boolean;
+  /**
+   * Downloads started per day, oldest first, with no gaps.
+   *
+   * Every day of the window is present, including the empty ones: a chart that
+   * simply skips quiet days draws a busier picture than the truth.
+   */
+  daily: { date: string; count: number; bytes: number }[];
 }
 
 /** Why a sign-in was refused, when the reason is worth telling the user. */

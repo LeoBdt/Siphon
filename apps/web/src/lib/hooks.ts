@@ -336,6 +336,19 @@ export function useUsers(opts: { enabled?: boolean } = {}) {
 }
 
 /** What one member is using and has fetched. Administrators only. */
+/**
+ * One's own usage and limits.
+ *
+ * The same figures an administrator sees about an account, asked about
+ * oneself — which needs no permission.
+ */
+export function useMyStats() {
+  return useQuery({
+    queryKey: ["my-stats"],
+    queryFn: () => apiFetch<UserStats>("/api/me/stats"),
+  });
+}
+
 export function useUserStats(userId: string | null) {
   return useQuery({
     queryKey: ["user-stats", userId],
