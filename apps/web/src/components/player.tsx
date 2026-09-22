@@ -257,7 +257,12 @@ function AudioBar({
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
             transition={{ duration: 0.32, ease: EASE_DRAWER }}
-            className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80"
+            // Starts where the icon rail ends (SIDEBAR_WIDTH_ICON, 3.5rem):
+            // spanning the whole window covered the rail's footer, and with it
+            // the sign-out button. A literal width rather than the
+            // `--sidebar-width-icon` variable, because the player is mounted
+            // outside the sidebar provider that defines it.
+            className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:left-14"
           >
             <div className="mx-auto flex max-w-4xl items-center gap-3 px-4 py-2.5">
               <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
