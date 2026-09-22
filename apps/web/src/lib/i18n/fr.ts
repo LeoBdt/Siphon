@@ -33,6 +33,8 @@ export const fr: Dictionary = {
     resetSubtitleFor: (who: string) =>
       `Ce lien définit un nouveau mot de passe pour ${who}.`,
     resetInvalid: "Ce lien a expiré ou a déjà été utilisé.",
+    resetOtherSession: (current: string, target: string) =>
+      `Tu es connecté en tant que ${current}. Ce lien définit le mot de passe de ${target} — continuer te déconnectera de ${current}.`,
     submitReset: "Définir mon mot de passe",
     displayName: "Ton nom",
     displayNamePlaceholder: "ex. Alex",
@@ -450,6 +452,7 @@ export const fr: Dictionary = {
         forWhomPlaceholder: "ex. Alice",
         forWhomHint:
           "Affiché à la personne quand elle ouvre le lien, et à toi dans la liste ci-dessous. Facultatif.",
+        group: "Groupe",
         uses: "Utilisations",
         usesHint: "Un même lien peut créer plusieurs comptes.",
         create: "Créer l'invitation",
@@ -612,6 +615,34 @@ export const fr: Dictionary = {
     deleteSelected: "Supprimer la sélection",
     downloadingHere: "Téléchargement",
     almostThere: "Finalisation",
+
+    move: "Déplacer",
+    moveSelected: "Déplacer la sélection",
+    movePickerTitle: "Déplacer vers",
+    destinationTitle: "Dossier de destination",
+    chooseFolder: "Choisir ce dossier",
+    moveHere: "Déplacer ici",
+    noSubfolders: "Aucun sous-dossier",
+
+    view: "Affichage",
+    viewGrid: "Grille",
+    viewList: "Liste",
+    columnName: "Nom",
+    columnSize: "Taille",
+    columnModified: "Modifié",
+
+    info: "Informations",
+    infoName: "Nom",
+    infoKind: "Type",
+    infoKindFolder: "Dossier",
+    infoKindFile: (ext: string) => (ext ? `Fichier ${ext}` : "Fichier"),
+    infoSize: "Taille",
+    infoContents: "Contenu",
+    infoContentsValue: (files: number, folders: number) =>
+      `${files} fichier${files > 1 ? "s" : ""}, ${folders} dossier${folders > 1 ? "s" : ""}`,
+    infoModified: "Modifié",
+    infoLocation: "Emplacement",
+    infoLocationRoot: "Racine",
   },
 
   apiErrors: {

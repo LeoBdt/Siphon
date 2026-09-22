@@ -7,6 +7,7 @@ import type { User } from "@app/shared";
 import { AuthScreen } from "@/components/auth-screen";
 import { useI18n } from "@/components/i18n-provider";
 import { apiFetch } from "@/lib/api";
+import { useAuthState } from "@/lib/hooks";
 
 interface ResetPreview {
   valid: boolean;
@@ -35,6 +36,7 @@ export default function ResetPage({
   const { t, errorMessage } = useI18n();
   const router = useRouter();
   const qc = useQueryClient();
+  const { data: auth } = useAuthState();
 
   const preview = useQuery({
     queryKey: ["reset", token],
@@ -72,11 +74,29 @@ export default function ResetPage({
     );
   }
 
+  const target = preview.data?.displayName ?? preview.data?.username ?? null;
+  const signedInAs = auth?.user
+    ? (auth.user.displayName ?? auth.user.username)
+    : null;
+  // Someone else's session is open in this browser. The link still sets the
+  // password of whoever it was issued for — the token decides, never the
+  // session — but finishing here swaps the account, and being told beforehand
+  // beats discovering it afterwards.
+  const otherSession =
+    signedInAs !== null &&
+    target !== null &&
+    auth?.user?.username !== preview.data?.username;
+
   return (
     <AuthScreen
       mode="reset"
-      resetFor={preview.data?.displayName ?? preview.data?.username ?? null}
+      resetFor={target}
       pending={reset.isPending}
+      notice={
+        otherSession && signedInAs && target
+          ? t.auth.resetOtherSession(signedInAs, target)
+          : null
+      }
       error={reset.error ? errorMessage(reset.error) : null}
       onSubmit={(c) => reset.mutate(c.password)}
     />

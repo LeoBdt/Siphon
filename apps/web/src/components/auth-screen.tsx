@@ -28,6 +28,7 @@ export function AuthScreen({
   resetFor,
   pending,
   error,
+  notice,
   needsCode,
   onSubmit,
 }: {
@@ -40,6 +41,8 @@ export function AuthScreen({
   resetFor?: string | null;
   pending: boolean;
   error?: string | null;
+  /** Something the person should read before submitting, but not a failure. */
+  notice?: string | null;
   /** The account has a second factor: ask for the code as well. */
   needsCode?: boolean;
   onSubmit: (credentials: {
@@ -197,6 +200,11 @@ export function AuthScreen({
             </label>
           )}
 
+          {notice && (
+            <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-foreground">
+              {notice}
+            </p>
+          )}
           {error && <p className="text-sm text-destructive">{error}</p>}
 
           <Button type="submit" disabled={!canSubmit} className="h-10">

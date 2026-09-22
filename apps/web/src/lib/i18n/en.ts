@@ -45,6 +45,8 @@ export const en = {
     resetSubtitleFor: (who: string) =>
       `This link sets a new password for ${who}.`,
     resetInvalid: "This link has expired or has already been used.",
+    resetOtherSession: (current: string, target: string) =>
+      `You are signed in as ${current}. This link sets ${target}'s password — continuing will sign you out of ${current}.`,
     submitReset: "Set my password",
     displayName: "Your name",
     displayNamePlaceholder: "e.g. Alex",
@@ -475,6 +477,7 @@ export const en = {
         forWhomPlaceholder: "e.g. Alice",
         forWhomHint:
           "Shown to them when they open the link, and to you in the list below. Optional.",
+        group: "Group",
         uses: "Uses",
         usesHint: "One link can create several accounts.",
         create: "Create invitation",
@@ -638,6 +641,34 @@ export const en = {
     downloadingHere: "Downloading",
     /** Finished, waiting for the file to show up in the listing. */
     almostThere: "Finishing up",
+
+    move: "Move",
+    moveSelected: "Move selection",
+    movePickerTitle: "Move to",
+    destinationTitle: "Destination folder",
+    chooseFolder: "Choose this folder",
+    moveHere: "Move here",
+    noSubfolders: "No subfolders",
+
+    view: "View",
+    viewGrid: "Grid",
+    viewList: "List",
+    columnName: "Name",
+    columnSize: "Size",
+    columnModified: "Modified",
+
+    info: "Information",
+    infoName: "Name",
+    infoKind: "Kind",
+    infoKindFolder: "Folder",
+    infoKindFile: (ext: string) => (ext ? `${ext} file` : "File"),
+    infoSize: "Size",
+    infoContents: "Contents",
+    infoContentsValue: (files: number, folders: number) =>
+      `${files} file${files > 1 ? "s" : ""}, ${folders} folder${folders > 1 ? "s" : ""}`,
+    infoModified: "Modified",
+    infoLocation: "Location",
+    infoLocationRoot: "Root",
   },
 
   // Errors the API returns about the request itself, keyed by its `code`.

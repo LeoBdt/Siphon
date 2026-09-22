@@ -21,9 +21,15 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { audio } = usePlayer();
   const pathname = usePathname();
 
-  // Accepting an invitation happens before there is an account, so it gets the
+  // Accepting an invitation happens before there is an account, and setting a
+  // password again happens precisely when one cannot sign in — both get the
   // bare page rather than the application chrome and its auth gate.
-  if (pathname.startsWith("/invite/")) return <>{children}</>;
+  //
+  // `/reset/` was missing here, so a recovery link asked the person to sign in
+  // first: the one thing they had the link because they could not do.
+  if (pathname.startsWith("/invite/") || pathname.startsWith("/reset/")) {
+    return <>{children}</>;
+  }
   return (
     // `open={false}` pins the rail collapsed. The mobile drawer is a separate
     // state (openMobile), so SidebarTrigger still works on small screens.
