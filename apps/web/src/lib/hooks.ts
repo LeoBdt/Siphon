@@ -43,15 +43,43 @@ import { apiFetch } from "./api";
  */
 export type JobScope = "all" | "mine" | { userId: string };
 
-export function useDownloads(scope: JobScope = "all") {
+/**
+ * @param withChildren Ask for each playlist's entries, not just its tally.
+ *   Only the file manager needs them — it draws one tile per entry — and a
+ *   long history would otherwise carry every entry of every playlist.
+ */
+export function useDownloads(scope: JobScope = "all", withChildren = false) {
   const userId =
     typeof scope === "object" ? scope.userId : scope === "mine" ? "me" : null;
   return useQuery({
-    queryKey: ["downloads", userId ?? "all"],
+    queryKey: ["downloads", userId ?? "all", withChildren],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (userId) params.set("userId", userId);
+      if (withChildren) params.set("children", "1");
+      const q = params.toString();
+      return apiFetch<DownloadJob[]>(`/api/downloads${q ? `?${q}` : ""}`);
+    },
+  });
+}
+
+/**
+ * The entries of one playlist, fetched when someone asks to see them.
+ *
+ * Kept out of the history listing on purpose: it exists to answer "which ones
+ * failed?", a question asked of one playlist at a time.
+ */
+export function useJobChildren(id: string, enabled: boolean) {
+  return useQuery({
+    // Its own key prefix, not ["downloads", …]: the socket merges live updates
+    // into every cache under that prefix, and those are lists of top-level
+    // jobs. This one is a list of entries.
+    queryKey: ["job-children", id],
     queryFn: () =>
-      apiFetch<DownloadJob[]>(
-        userId ? `/api/downloads?userId=${encodeURIComponent(userId)}` : "/api/downloads",
-      ),
+      apiFetch<DownloadJob & { children?: DownloadJob[] }>(
+        `/api/downloads/${encodeURIComponent(id)}`,
+      ).then((job) => job.children ?? []),
+    enabled,
   });
 }
 

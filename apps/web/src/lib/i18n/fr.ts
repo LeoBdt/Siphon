@@ -167,6 +167,13 @@ export const fr: Dictionary = {
     failed: "Échec",
     canceled: "Annulé",
     videos: (n: number) => `${n} vidéo${n > 1 ? "s" : ""}`,
+    entriesDone: (done: number, total: number) => `${done}/${total}`,
+    failedEntries: (n: number) => `${n} échec${n > 1 ? "s" : ""}`,
+    /** A playlist that reached the end with entries missing. */
+    partial: (n: number) => `${n} manquant${n > 1 ? "s" : ""}`,
+    showFailed: "Échecs",
+    hideFailed: "Échecs",
+    noFailureDetail: "Aucun détail enregistré pour cette entrée.",
     steps: {
       download: "Téléchargement",
       process: "Traitement",

@@ -60,6 +60,32 @@ export function formatSpeed(
   return `${formatBytes(bytesPerSec, intl)}/s`;
 }
 
+/**
+ * "3 minutes ago", "il y a 2 jours".
+ *
+ * Through `Intl.RelativeTimeFormat`, so the wording and the plural rules come
+ * from the locale rather than from our dictionaries — this is exactly the kind
+ * of phrase the platform already knows in every language.
+ */
+export function formatRelative(iso: string, intl = "en-US"): string {
+  const seconds = (Date.now() - new Date(iso).getTime()) / 1000;
+  const rtf = new Intl.RelativeTimeFormat(intl, { numeric: "auto" });
+  const steps: [Intl.RelativeTimeFormatUnit, number][] = [
+    ["second", 60],
+    ["minute", 60],
+    ["hour", 24],
+    ["day", 7],
+    ["week", 4.35],
+    ["month", 12],
+  ];
+  let value = seconds;
+  for (const [unit, size] of steps) {
+    if (Math.abs(value) < size) return rtf.format(-Math.round(value), unit);
+    value /= size;
+  }
+  return rtf.format(-Math.round(value), "year");
+}
+
 export function formatDate(iso: string, intl = "en-US"): string {
   return new Date(iso).toLocaleString(intl, {
     day: "2-digit",

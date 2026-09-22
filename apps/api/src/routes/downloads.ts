@@ -50,7 +50,8 @@ export async function downloadsRoutes(app: FastifyInstance) {
     }
   });
 
-  // List top-level jobs (playlist children are nested under their parent).
+  // List top-level jobs. Playlist entries stay nested under their parent, and
+  // ride along only when `children=1` asks for them.
   app.get("/api/downloads", async (req) => {
     const q = req.query as Record<string, string | undefined>;
     const isAdmin = req.user?.effective.isAdmin ?? false;
@@ -67,6 +68,7 @@ export async function downloadsRoutes(app: FastifyInstance) {
       limit: q.limit ? Number(q.limit) : undefined,
       offset: q.offset ? Number(q.offset) : undefined,
       userId,
+      withChildren: q.children === "1",
     };
     return listJobs(filter);
   });

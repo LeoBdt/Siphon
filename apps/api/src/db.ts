@@ -116,6 +116,9 @@ function rowToJob(r: Row): DownloadJob {
     playlistId: r.playlistId,
     isPlaylistParent: r.isPlaylistParent === 1,
     childCount: r.childCount,
+    // Filled in by the listing for playlist parents — see `withChildCounts`.
+    completedCount: null,
+    failedCount: null,
     phase: (r.phase as DownloadJob["phase"]) ?? null,
     retention: (r.retention as DownloadJob["retention"]) ?? "library",
     userId: r.userId ?? null,
@@ -239,6 +242,8 @@ export interface ListFilter {
    * function. A plain member always arrives here with their own id.
    */
   userId?: string;
+  /** Attach each playlist parent's entries. See `withChildCounts`. */
+  withChildren?: boolean;
 }
 
 export function listJobs(filter: ListFilter = {}): DownloadJob[] {
@@ -267,7 +272,52 @@ export function listJobs(filter: ListFilter = {}): DownloadJob[] {
        ORDER BY createdAt DESC LIMIT $limit OFFSET $offset`,
     )
     .all(params) as Row[];
-  return rows.map(rowToJob);
+  return withChildCounts(rows.map(rowToJob), filter.withChildren === true);
+}
+
+/**
+ * Fill in each playlist parent's tally of finished and failed entries.
+ *
+ * One grouped query for the whole page rather than one per parent, and
+ * counted at read time rather than stored: a stored tally is a tally that can
+ * disagree with its children after a retry or a deletion.
+ *
+ * With `withChildren`, the entries themselves are attached too. That is for
+ * the file manager, which draws one tile per entry with its own progress; a
+ * history listing asks for the counts alone, because a hundred playlists of a
+ * hundred entries is not a payload anyone wants.
+ */
+function withChildCounts(jobs: DownloadJob[], withChildren: boolean): DownloadJob[] {
+  const parentIds = jobs.filter((j) => j.isPlaylistParent).map((j) => j.id);
+  if (parentIds.length === 0) return jobs;
+
+  const placeholders = parentIds.map(() => "?").join(",");
+  const rows = db
+    .prepare(
+      `SELECT playlistId,
+              SUM(status = 'completed')                  AS completed,
+              SUM(status = 'error' OR status = 'canceled') AS failed
+         FROM downloads
+        WHERE playlistId IN (${placeholders})
+        GROUP BY playlistId`,
+    )
+    .all(...parentIds) as {
+    playlistId: string;
+    completed: number;
+    failed: number;
+  }[];
+  const byParent = new Map(rows.map((r) => [r.playlistId, r]));
+
+  return jobs.map((job) => {
+    if (!job.isPlaylistParent) return job;
+    const tally = byParent.get(job.id);
+    return {
+      ...job,
+      completedCount: tally?.completed ?? 0,
+      failedCount: tally?.failed ?? 0,
+      ...(withChildren ? { children: listChildren(job.id) } : {}),
+    };
+  });
 }
 
 /**

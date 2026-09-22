@@ -1,9 +1,12 @@
 "use client";
 
-import { motion } from "motion/react";
+import { useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import {
+  AlertTriangle,
   Ban,
   CheckCircle2,
+  ChevronDown,
   Clock,
   Download,
   Loader2,
@@ -21,9 +24,10 @@ import {
   formatBytes,
   formatDuration,
   formatEta,
+  formatRelative,
   formatSpeed,
 } from "@/lib/format";
-import { useDeleteJob, useJobAction } from "@/lib/hooks";
+import { useDeleteJob, useJobAction, useJobChildren } from "@/lib/hooks";
 import { apiUrl } from "@/lib/api";
 import { useI18n } from "@/components/i18n-provider";
 import type { Dictionary } from "@/lib/i18n";
@@ -32,6 +36,79 @@ import { EASE_OUT, DUR } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 const ACTIVE = ACTIVE_STATUSES;
+
+/**
+ * Which entries of a playlist did not make it.
+ *
+ * A count alone ends the conversation at "three of them failed" — the next
+ * question is always which three, and until now the answer was nowhere in the
+ * interface. Fetched only when unfolded: the listing carries the tally, and
+ * this is asked of one playlist at a time.
+ */
+function FailedEntries({ job }: { job: DownloadJob }) {
+  const { t, intl } = useI18n();
+  const [open, setOpen] = useState(false);
+  const { data, isLoading } = useJobChildren(job.id, open);
+  const failed = (data ?? []).filter(
+    (c) => c.status === "error" || c.status === "canceled",
+  );
+
+  return (
+    <div className="mt-1">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <ChevronDown
+          className={cn(
+            "size-3 transition-transform duration-200",
+            open && "rotate-180",
+          )}
+        />
+        {open ? t.job.hideFailed : t.job.showFailed}
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: DUR.base, ease: EASE_OUT }}
+            className="overflow-hidden"
+          >
+            {isLoading ? (
+              <Loader2 className="mt-1.5 size-3.5 animate-spin text-muted-foreground" />
+            ) : (
+              <ul className="mt-1.5 flex flex-col gap-1 border-l-2 border-destructive/30 pl-2">
+                {failed.map((entry) => (
+                  <li key={entry.id} className="text-xs">
+                    <span className="block truncate" title={entry.title ?? entry.url}>
+                      {entry.title ?? entry.url}
+                    </span>
+                    <span
+                      className="text-destructive"
+                      title={entry.errorMessage ?? undefined}
+                    >
+                      {entry.status === "canceled"
+                        ? t.job.canceled
+                        : entry.errorCode
+                          ? t.errors[entry.errorCode]
+                          : t.job.noFailureDetail}
+                    </span>
+                    <span className="ml-1.5 text-muted-foreground">
+                      · {formatRelative(entry.updatedAt, intl)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
 
 /** 0 = download, 1 = processing, 2 = done. -1 for not-started/failed. */
 function stepIndex(status: DownloadStatus): number {
@@ -109,9 +186,24 @@ export function JobCard({
   const isProcessing = job.status === "processing";
   const isDownloading = job.status === "downloading";
 
+  /**
+   * A playlist that finished with entries missing.
+   *
+   * Its own state, because neither of the two it sits between is true: the
+   * batch did run to the end, so calling it a failure would say the whole
+   * download was lost — and a plain green tick would hide that three videos
+   * are not there.
+   */
+  const partial =
+    job.isPlaylistParent &&
+    job.status === "completed" &&
+    (job.failedCount ?? 0) > 0;
+
   const statusColor =
     job.status === "completed"
-      ? "text-emerald-500"
+      ? partial
+        ? "text-amber-500"
+        : "text-emerald-500"
       : job.status === "error"
         ? "text-destructive"
         : job.status === "canceled"
@@ -164,8 +256,23 @@ export function JobCard({
               statusColor,
             )}
           >
+            {/*
+              A finished job carries a mark and a date: the mark says how it
+              went at a glance, the date says when — which is what a history is
+              read for. The word "Done" said neither.
+            */}
             {job.status === "completed" ? (
-              <CheckCircle2 className="size-3.5" />
+              <>
+                {partial ? (
+                  <AlertTriangle className="size-3.5" />
+                ) : (
+                  <CheckCircle2 className="size-3.5" />
+                )}
+                {partial && t.job.partial(job.failedCount ?? 0)}
+                <span className="font-normal text-muted-foreground">
+                  {formatRelative(job.updatedAt, intl)}
+                </span>
+              </>
             ) : job.status === "error" ? (
               <XCircle className="size-3.5" />
             ) : job.status === "canceled" ? (
@@ -175,15 +282,29 @@ export function JobCard({
             ) : (
               <Loader2 className="size-3.5 animate-spin" />
             )}
-            {phaseLabel(job, t)}
+            {job.status !== "completed" && phaseLabel(job, t)}
           </span>
         </div>
 
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           {job.isPlaylistParent && (
+            // While it runs, the useful number is how far along it is; once it
+            // is over, how many there were. A playlist that says "40 videos"
+            // for twenty minutes tells you nothing you did not already know.
             <Badge variant="secondary" className="gap-1 text-xs">
               <ListVideo className="size-3" />
-              {t.job.videos(job.childCount ?? 0)}
+              {isActive
+                ? t.job.entriesDone(job.completedCount ?? 0, job.childCount ?? 0)
+                : t.job.videos(job.childCount ?? 0)}
+            </Badge>
+          )}
+          {job.isPlaylistParent && (job.failedCount ?? 0) > 0 && (
+            <Badge
+              variant="outline"
+              className="gap-1 border-destructive/40 text-xs font-normal text-destructive"
+            >
+              <XCircle className="size-3" />
+              {t.job.failedEntries(job.failedCount ?? 0)}
             </Badge>
           )}
           {authorName && (
@@ -270,6 +391,10 @@ export function JobCard({
           >
             {t.errors[job.errorCode ?? "unknown"]}
           </p>
+        )}
+
+        {job.isPlaylistParent && (job.failedCount ?? 0) > 0 && (
+          <FailedEntries job={job} />
         )}
       </div>
 

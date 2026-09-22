@@ -31,6 +31,7 @@ import {
 import { jobEvents } from "./lib/events.js";
 import { probeInfo, runDownload, type RunDownloadHandle } from "./lib/ytdlp.js";
 import { classifyYtdlpError } from "./lib/ytdlp-parse.js";
+import { reserveOutputStem } from "./lib/output-name.js";
 import { resolveInsideRoot } from "./lib/paths.js";
 import { libraryRootFor } from "./auth/scope.js";
 import { getUser } from "./auth/store.js";
@@ -209,11 +210,17 @@ async function runJob(jobId: string): Promise<void> {
     }),
   );
 
+  // Claimed before yt-dlp starts, and held until this job settles: two entries
+  // of one playlist can carry the same title, and the winner would otherwise
+  // be decided by whichever finished moving its file first.
+  const name = await reserveOutputStem(destDir, job.title, job.id);
+
   const handle = runDownload({
     url: job.url,
     preset: job.preset,
     advanced: fmt,
     destDir,
+    outputStem: name.stem,
     onProgress: (p) => {
       // A cancelled job is settled. yt-dlp may still emit a line or two while
       // it is being torn down, and writing one through would put the card back
@@ -313,6 +320,9 @@ async function runJob(jobId: string): Promise<void> {
       }
     })
     .finally(() => {
+      // Whatever the outcome: on success the file now holds the name itself,
+      // and on failure nothing should keep it out of the next attempt's reach.
+      name.release();
       active.delete(jobId);
       canceled.delete(jobId);
       overLimit.delete(jobId);
@@ -382,7 +392,21 @@ function recomputeParent(parentId: string) {
     status = "queued";
   }
 
-  emit(updateJob(parentId, { status, progress, childCount: children.length }));
+  const updated = updateJob(parentId, {
+    status,
+    progress,
+    childCount: children.length,
+  });
+  // The tallies ride along with the update rather than waiting for the next
+  // listing: the interface shows "12/40" and "3 failed" live, and a row read
+  // straight from the table carries neither.
+  emit(
+    updated && {
+      ...updated,
+      completedCount: done,
+      failedCount: errored + canceled,
+    },
+  );
 }
 
 // ---------------------------------------------------------------------------

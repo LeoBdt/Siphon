@@ -78,14 +78,32 @@ export function WsProvider({ children }: { children: ReactNode }) {
 
         // Merge into every cached downloads list — there is one per scope now
         // that an administrator can narrow the view to a single member.
-        if (job.playlistId) return; // children aren't in the top-level list
         for (const query of qc.getQueryCache().findAll({ queryKey: ["downloads"] })) {
           const old = query.state.data as DownloadJob[] | undefined;
           if (!old) continue;
+
+          // A playlist entry is never in the top-level list: it lives in its
+          // parent's `children`, which only the lists that asked for them
+          // carry — today, the file manager's.
+          if (job.playlistId) {
+            const at = old.findIndex((j) => j.id === job.playlistId);
+            const entries = at === -1 ? undefined : old[at].children;
+            if (!entries) continue;
+            const next = [...old];
+            next[at] = {
+              ...next[at],
+              children: entries.map((c) => (c.id === job.id ? job : c)),
+            };
+            qc.setQueryData(query.queryKey, next);
+            continue;
+          }
+
           const idx = old.findIndex((j) => j.id === job.id);
           if (idx !== -1) {
             const next = [...old];
-            next[idx] = job;
+            // Keep the entries this list already holds: a parent's own update
+            // carries its progress and its tallies, never its children.
+            next[idx] = { ...job, children: old[idx].children };
             qc.setQueryData(query.queryKey, next);
             continue;
           }

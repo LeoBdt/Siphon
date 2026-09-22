@@ -103,6 +103,24 @@ export interface DownloadJob {
   isPlaylistParent: boolean;
   /** For a parent: number of child jobs. */
   childCount: number | null;
+  /**
+   * For a parent: how many entries have finished, and how many gave up.
+   *
+   * Counted when the list is read rather than stored, so they cannot drift
+   * from the children they describe. `failedCount` covers errors and
+   * cancellations alike — from the outside, both mean an entry that is not
+   * there. Null on anything that is not a playlist parent.
+   */
+  completedCount: number | null;
+  failedCount: number | null;
+  /**
+   * The entries of a playlist, when they were asked for.
+   *
+   * Only present on a parent, and only when the caller requested them: the
+   * file manager needs each entry's own progress and destination, while a
+   * history listing would rather not carry a hundred rows per playlist.
+   */
+  children?: DownloadJob[];
   /** Fine-grained phase during downloading/processing (drives the stepper). */
   phase: DownloadPhase | null;
   /** Where the finished file goes. */

@@ -180,6 +180,14 @@ export const en = {
     failed: "Failed",
     canceled: "Canceled",
     videos: (n: number) => `${n} video${n > 1 ? "s" : ""}`,
+    /** Playlist progress: how many entries are through, out of how many. */
+    entriesDone: (done: number, total: number) => `${done}/${total}`,
+    failedEntries: (n: number) => `${n} failed`,
+    /** A playlist that reached the end with entries missing. */
+    partial: (n: number) => `${n} missing`,
+    showFailed: "Failures",
+    hideFailed: "Failures",
+    noFailureDetail: "No detail recorded for this entry.",
     steps: {
       download: "Download",
       process: "Process",
