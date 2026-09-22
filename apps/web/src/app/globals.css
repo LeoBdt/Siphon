@@ -239,4 +239,27 @@
   .scroll-panel:hover::-webkit-scrollbar-thumb {
     background-color: color-mix(in oklab, var(--color-foreground) 25%, transparent);
   }
+
+  /*
+   * The file grid's arrival animation, in CSS rather than in JavaScript.
+   *
+   * Identical to what Motion played, but a folder of several hundred entries
+   * cannot afford an animation library instrumenting every tile — the cost is
+   * paid on every render, not only while something moves. Above a threshold
+   * the grid drops to plain elements and uses this instead; small folders keep
+   * the full treatment, where the move and rename animations still earn it.
+   */
+  @keyframes tile-enter {
+    from {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+  .tile-enter {
+    animation: tile-enter 200ms var(--ease-out) both;
+  }
 }

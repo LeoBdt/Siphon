@@ -243,6 +243,11 @@ const WINK_ANIMATION = {
   rotate: [0, -5, 5, -6, 6, -7, 7, -8, 8, -9, 9, -10, 10, -11, 0, 0, 0, 0],
   scale: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1.09, 0.3, 1.14, 1],
 };
+/** How close to an edge the pointer must get before the surface scrolls. */
+const EDGE = 48;
+/** Fastest edge scroll, in pixels per frame. */
+const EDGE_SPEED = 18;
+
 /** Where the implosion sits inside WINK_TRANSITION (0.76 x 1.5s). */
 const IMPLOSION_MS = 1140;
 
@@ -253,7 +258,7 @@ const WINK_TRANSITION = {
   times: WINK_TIMES,
 };
 
-function intersects(a: Rect, b: DOMRect): boolean {
+function intersects(a: Rect, b: Rect): boolean {
   return !(
     b.left > a.right ||
     b.right < a.left ||
@@ -278,6 +283,8 @@ const EntryTile = memo(function EntryTile({
   wink,
   costumeHidden,
   settling,
+  animateEntry,
+  animateLayout,
 }: {
   node: FileNode;
   selected: boolean;
@@ -297,6 +304,15 @@ const EntryTile = memo(function EntryTile({
   costumeHidden: boolean;
   /** Just renamed: hold the layout animation so it appears in place. */
   settling: boolean;
+  /**
+   * Whether arriving on screen is an event worth animating.
+   *
+   * False for the tiles a folder opens with: they did not appear, the folder
+   * did — and that is the grid's animation, not forty separate ones.
+   */
+  animateEntry: boolean;
+  /** Whether moves are animated. Off in crowded folders — see LAYOUT_LIMIT. */
+  animateLayout: boolean;
 }) {
   const isDir = node.type === "directory";
   const costume = costumeHidden ? null : disguisedKind(node);
@@ -320,47 +336,81 @@ const EntryTile = memo(function EntryTile({
     registerRef(node.path, el);
   };
 
+  const tileClass = cn(
+    // A card, not a transparent patch: over the dotted background a
+    // borderless tile left the dots running through the name.
+    "group relative flex cursor-default flex-col items-center gap-2 rounded-xl border bg-card p-3 transition-colors",
+    // Selection is an outline, not a wash: a translucent tint replaced the
+    // card's own background and let the dotted page through, so picking a file
+    // made it *less* readable.
+    selected
+      ? "border-primary ring-1 ring-primary/50"
+      : "hover:border-foreground/20 hover:bg-accent",
+    isOver && isDir && "border-primary bg-primary/10 ring-2 ring-primary/40",
+    isDragging && "opacity-40",
+  );
+
+  const handlers = {
+    ref: setRefs,
+    ...listeners,
+    ...attributes,
+    "data-selected": selected || undefined,
+    onClick: (e: React.MouseEvent) => onSelect(node, e),
+    onDoubleClick: () => onOpen(node),
+  };
+
+  /**
+   * A plain element once the folder is crowded.
+   *
+   * Motion instruments every element it renders, and that cost is paid on each
+   * render rather than only while something animates — several hundred of them
+   * is what made a full folder sluggish to scroll and to select in. Past the
+   * threshold, the only animation still on offer is the arrival, and CSS does
+   * that perfectly well. The wink keeps its keyframes wherever it happens:
+   * there is one of it, and only for a moment.
+   */
+  const animated = animateLayout || wink;
+
   return (
     <ContextMenu>
       <ContextMenuTrigger
         render={
-          <motion.div
-            // Suspended right after a rename. The tile remounts under its new
-            // path at a new spot in the alphabetical order, and animating that
-            // arrival made it slide in from the side — which says nothing about
-            // what happened. It reappears in place instead, and layout
-            // animation resumes for moves and deletions.
-            layout={!wink && !settling}
-            initial={{ opacity: 0, scale: 0.96 }}
-            animate={wink ? WINK_ANIMATION : { opacity: 1, scale: 1 }}
-            transition={
-              wink ? WINK_TRANSITION : { duration: DUR.base, ease: EASE_OUT }
-            }
-            ref={setRefs}
-            {...listeners}
-            {...attributes}
-            data-selected={selected || undefined}
-            onClick={(e: React.MouseEvent) => onSelect(node, e)}
-            onDoubleClick={() => onOpen(node)}
-            className={cn(
-              "group relative flex cursor-default flex-col items-center gap-2 rounded-xl border border-transparent p-3 transition-colors",
-              selected
-                ? "border-primary/40 bg-primary/10"
-                : "hover:bg-muted",
-              isOver &&
-                isDir &&
-                "border-primary bg-primary/10 ring-2 ring-primary/40",
-              isDragging && "opacity-40",
-            )}
-          />
+          animated ? (
+            <motion.div
+              // Suspended right after a rename. The tile remounts under its new
+              // path at a new spot in the alphabetical order, and animating that
+              // arrival made it slide in from the side — which says nothing about
+              // what happened. It reappears in place instead, and layout
+              // animation resumes for moves and deletions.
+              layout={animateLayout && !wink && !settling}
+              initial={animateEntry ? { opacity: 0, scale: 0.96 } : false}
+              animate={wink ? WINK_ANIMATION : { opacity: 1, scale: 1 }}
+              transition={
+                wink ? WINK_TRANSITION : { duration: DUR.base, ease: EASE_OUT }
+              }
+              {...handlers}
+              className={tileClass}
+            />
+          ) : (
+            <div
+              {...handlers}
+              className={cn(tileClass, animateEntry && "tile-enter")}
+            />
+          )
         }
       >
         <div className="relative flex size-14 items-center justify-center">
           {kind === "image" ? (
+            // `lazy`: this is the full-size file standing in for a thumbnail,
+            // so a folder of photographs was downloading every one of them at
+            // once. Until the API serves real thumbnails, at least let the
+            // browser fetch only what is on screen.
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={streamUrl(node.path)}
               alt=""
+              loading="lazy"
+              decoding="async"
               className="size-14 rounded-md object-cover"
             />
           ) : (
@@ -450,7 +500,15 @@ const EntryTile = memo(function EntryTile({
  * API hides), so this stands in for it and disappears when the job completes
  * and the listing refreshes.
  */
-function DownloadingTile({ job }: { job: DownloadJob }) {
+const DownloadingTile = memo(function DownloadingTile({
+  job,
+  animateEntry,
+  animateLayout,
+}: {
+  job: DownloadJob;
+  animateEntry: boolean;
+  animateLayout: boolean;
+}) {
   const t = useT();
   const done = job.status === "completed";
   // A finished job is 100%, never whatever the last progress line said.
@@ -468,11 +526,13 @@ function DownloadingTile({ job }: { job: DownloadJob }) {
 
   return (
     <motion.div
-      layout
-      initial={{ opacity: 0, scale: 0.96 }}
+      layout={animateLayout}
+      initial={animateEntry ? { opacity: 0, scale: 0.96 } : false}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: DUR.base, ease: EASE_OUT }}
-      className="relative flex cursor-default flex-col items-center gap-2 rounded-xl border border-dashed border-primary/40 bg-primary/5 p-3"
+      // Opaque like the entry tiles, with the dashed primary border keeping it
+      // legible as a placeholder rather than a file.
+      className="relative flex cursor-default flex-col items-center gap-2 rounded-xl border border-dashed border-primary/40 bg-card p-3"
       title={job.title ?? job.url}
     >
       <div className="flex size-14 items-center justify-center">
@@ -491,6 +551,94 @@ function DownloadingTile({ job }: { job: DownloadJob }) {
             frozen one. */}
         {job.status === "downloading" && determinate ? `${pct}% · ${label}` : label}
       </span>
+    </motion.div>
+  );
+});
+
+/**
+ * A value that refuses to change more than once every `ms`.
+ *
+ * yt-dlp reports progress about five times a second, per download. Forty
+ * entries of a playlist therefore push two hundred updates a second through
+ * the socket, and each one rebuilt and re-sorted the whole grid — which is
+ * what made the explorer crawl precisely when there was something to watch.
+ * A progress ring does not need more than a handful of updates a second.
+ */
+function useThrottled<T>(value: T, ms: number): T {
+  const [shown, setShown] = useState(value);
+  const lastAt = useRef(0);
+
+  useEffect(() => {
+    const since = Date.now() - lastAt.current;
+    if (since >= ms) {
+      lastAt.current = Date.now();
+      setShown(value);
+      return;
+    }
+    const id = setTimeout(() => {
+      lastAt.current = Date.now();
+      setShown(value);
+    }, ms - since);
+    return () => clearTimeout(id);
+  }, [value, ms]);
+
+  return shown;
+}
+
+/** How often the grid may follow the download progress, in milliseconds. */
+const PROGRESS_TICK = 250;
+
+// --- Folder grid ----------------------------------------------------------
+
+/**
+ * Above this many tiles, moves stop being animated.
+ *
+ * Every animated tile is measured by Motion on each layout change, so in a
+ * folder of hundreds the cost is paid on every render — to show a reflow
+ * nobody can follow anyway.
+ */
+const LAYOUT_LIMIT = 120;
+
+/**
+ * The contents of one folder.
+ *
+ * Mounted per path, which is the whole point: opening a folder replaces this
+ * element, so the arrival is the grid's to animate. Its tiles are not new
+ * things appearing — they are what the folder always held — so they render
+ * without an entry animation until the grid has settled. After that, a tile
+ * that shows up really is an event (a download landing, a folder created) and
+ * animates on its own.
+ */
+function FolderGrid({
+  tiles,
+  children,
+}: {
+  tiles: Tile[];
+  children: (opts: { animateEntry: boolean; animateLayout: boolean }) => React.ReactNode;
+}) {
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    // A frame, not a timeout: the first paint is what must be free of entry
+    // animations, and anything after it is a genuine arrival.
+    const id = requestAnimationFrame(() => setSettled(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
+  return (
+    <motion.div
+      // Depth, not direction: the contents of a folder replace the contents of
+      // another, they do not slide in from somewhere. Short enough not to sit
+      // between the click and the answer.
+      initial={{ opacity: 0, scale: 0.985 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: DUR.base, ease: EASE_OUT }}
+      data-selection-surface=""
+      className="grid grid-cols-[repeat(auto-fill,minmax(104px,1fr))] gap-1"
+    >
+      {children({
+        animateEntry: settled,
+        animateLayout: tiles.length <= LAYOUT_LIMIT,
+      })}
     </motion.div>
   );
 }
@@ -534,7 +682,12 @@ export function FileManager() {
   // relative to their own folder, so a job of theirs aimed at their root
   // carries the same empty path as the administrator's library root — and
   // surfaced there, in a folder it was never going to land in.
-  const { data: jobs } = useDownloads("mine");
+  // With the playlist entries: each one writes its own file here, so each one
+  // gets its own tile. The parent writes nothing and never appears.
+  const { data: liveJobs } = useDownloads("mine", true);
+  // Throttled: see `useThrottled`. The tiles are rebuilt from this, so it sets
+  // how often the grid does any work at all while downloads are running.
+  const jobs = useThrottled(liveJobs, PROGRESS_TICK);
   const move = useMoveEntry();
   const createFolder = useCreateFolder();
   const del = useDeleteEntry();
@@ -569,10 +722,10 @@ export function FileManager() {
   /**
    * The entry a job produced.
    *
-   * Filename first, then the video id as a fallback. The id earns its place:
-   * yt-dlp appends it to every output name, it is plain ASCII, and it survives
-   * cases where the recorded path and the real filename drift apart — which
-   * rows written before the encoding fix still do.
+   * The recorded filename first. The bracketed video id is only a fallback
+   * now, for files fetched back when yt-dlp put it in every name — downloads
+   * are named after their title alone, and a collision is settled with a
+   * " (2)" before the download starts.
    */
   const matchingEntry = useCallback(
     (job: DownloadJob): FileNode | undefined => {
@@ -597,16 +750,17 @@ export function FileManager() {
    * to the browser and deleted, so they never become a file here. Showing one
    * as an in-progress tile promised something the folder would never hold.
    */
-  const jobsHere = useMemo(
-    () =>
-      (jobs ?? []).filter(
-        (j) =>
-          !j.isPlaylistParent &&
-          j.retention !== "direct" &&
-          (j.destPath ?? "") === path,
-      ),
-    [jobs, path],
-  );
+  const jobsHere = useMemo(() => {
+    // Flattened: a playlist's entries are the jobs that land in a folder, the
+    // parent is only their tally. Leaving them nested meant a playlist showed
+    // nothing here at all while forty files were being written.
+    const flat = (jobs ?? []).flatMap((j) =>
+      j.isPlaylistParent ? (j.children ?? []) : [j],
+    );
+    return flat.filter(
+      (j) => j.retention !== "direct" && (j.destPath ?? "") === path,
+    );
+  }, [jobs, path]);
 
   /**
    * One ordered list of tiles: folders first, then files and downloads
@@ -748,18 +902,106 @@ export function FileManager() {
     width: number;
     height: number;
   } | null>(null);
-  const marqueeStart = useRef<{ x: number; y: number; base: Set<string> } | null>(
-    null,
-  );
+  const marqueeStart = useRef<{
+    x: number;
+    y: number;
+    base: Set<string>;
+    /** Extent of the content when the drag began — see `runMarqueeFrame`. */
+    contentWidth: number;
+    contentHeight: number;
+  } | null>(null);
   /**
-   * Tile boxes, measured once when the drag starts. Re-measuring all of them on
-   * every pointermove forced a layout each frame, which is what made the
-   * marquee stutter — they cannot move while the drag is in progress anyway.
+   * Tile boxes, measured once when the drag starts, **in the scroller's own
+   * coordinates** — distance from the top of the content, not from the top of
+   * the window. Re-measuring all of them on every pointermove forced a layout
+   * each frame, which is what made the marquee stutter; and viewport
+   * coordinates would go stale the moment the surface scrolls, which it now
+   * does on its own (see the edge scrolling below).
    */
-  const tileBoxes = useRef<[string, DOMRect][]>([]);
-  /** Latest pointer position, applied at most once per animation frame. */
-  const pendingFrame = useRef<number | null>(null);
+  const tileBoxes = useRef<[string, Rect][]>([]);
+  /** Running while a marquee is active: edge scrolling plus one update a frame. */
+  const marqueeFrame = useRef<number | null>(null);
+  /** Latest pointer position, in viewport coordinates. */
   const lastPointer = useRef<{ x: number; y: number } | null>(null);
+
+  /**
+   * One marquee frame: scroll if the pointer is against an edge, then rebuild
+   * the rectangle and the selection from wherever the content now sits.
+   *
+   * Driven by the animation frame rather than by pointermove, because the
+   * pointer stops moving the instant it reaches the edge — and that is exactly
+   * when the surface has to keep scrolling under it.
+   */
+  // A declaration rather than a memoised callback: it schedules itself for the
+  // next frame while the pointer sits against an edge, and a `useCallback`
+  // cannot refer to its own binding.
+  function runMarqueeFrame() {
+    marqueeFrame.current = null;
+    const host = scrollRef.current;
+    const p = lastPointer.current;
+    const s = marqueeStart.current;
+    if (!host || !p || !s) return;
+
+    const box = host.getBoundingClientRect();
+
+    // Edge scrolling, proportional to how far past the threshold the pointer
+    // is: a nudge past the edge creeps, holding well beyond it travels.
+    //
+    // Bounded by the content as it was when the drag began, not by the live
+    // `scrollHeight`. The overlay is absolutely positioned *inside* this
+    // scroller, so a rectangle dragged past the last row lengthened the
+    // content, which allowed more scrolling, which lengthened it again — the
+    // runaway scroll downwards.
+    const maxScroll = Math.max(0, s.contentHeight - host.clientHeight);
+    const above = box.top + EDGE - p.y;
+    const below = p.y - (box.bottom - EDGE);
+    if (above > 0) {
+      host.scrollTop = Math.max(
+        0,
+        host.scrollTop - (Math.min(above, EDGE) / EDGE) * EDGE_SPEED,
+      );
+    } else if (below > 0) {
+      host.scrollTop = Math.min(
+        maxScroll,
+        host.scrollTop + (Math.min(below, EDGE) / EDGE) * EDGE_SPEED,
+      );
+    }
+
+    // The pointer in content coordinates, read *after* scrolling so the
+    // rectangle follows the content rather than the window. Clamped to the
+    // content for the same reason as the scroll above.
+    const px = Math.max(0, Math.min(s.contentWidth, p.x - box.left + host.scrollLeft));
+    const py = Math.max(0, Math.min(s.contentHeight, p.y - box.top + host.scrollTop));
+
+    const rect: Rect = {
+      left: Math.min(s.x, px),
+      right: Math.max(s.x, px),
+      top: Math.min(s.y, py),
+      bottom: Math.max(s.y, py),
+    };
+    setMarquee({
+      left: rect.left,
+      top: rect.top,
+      width: rect.right - rect.left,
+      height: rect.bottom - rect.top,
+    });
+
+    const hit = new Set(s.base);
+    for (const [path, tileBox] of tileBoxes.current) {
+      if (intersects(rect, tileBox)) hit.add(path);
+    }
+    // Skip the state update when nothing actually changed, so sweeping over
+    // empty space does not re-render every tile.
+    setSelection((prev) =>
+      prev.size === hit.size && [...hit].every((x) => prev.has(x)) ? prev : hit,
+    );
+
+    // Keep going while the pointer sits against an edge: the selection has to
+    // grow even though nothing is moving.
+    if (above > 0 || below > 0) {
+      marqueeFrame.current = requestAnimationFrame(runMarqueeFrame);
+    }
+  }
 
   function onSurfacePointerDown(e: React.PointerEvent) {
     // Only start on empty space. Both the scrolling box and the grid inside it
@@ -769,75 +1011,86 @@ export function FileManager() {
     // A pointer-down on a tile has no such attribute and belongs to dnd-kit.
     const el = e.target as HTMLElement;
     if (e.button !== 0 || !el.hasAttribute("data-selection-surface")) return;
+    const host = e.currentTarget;
+    const box = host.getBoundingClientRect();
     const additive = e.ctrlKey || e.metaKey;
     marqueeStart.current = {
-      x: e.clientX,
-      y: e.clientY,
+      x: e.clientX - box.left + host.scrollLeft,
+      y: e.clientY - box.top + host.scrollTop,
       base: additive ? new Set(selection) : new Set(),
+      contentWidth: host.scrollWidth,
+      contentHeight: host.scrollHeight,
     };
     if (!additive) {
       setSelection(new Set());
       anchorRef.current = null;
     }
-    tileBoxes.current = [...tileRefs.current].map(([p, el]) => [
-      p,
-      el.getBoundingClientRect(),
-    ]);
-    e.currentTarget.setPointerCapture(e.pointerId);
+    tileBoxes.current = [...tileRefs.current].map(([p, el]) => {
+      const r = el.getBoundingClientRect();
+      return [
+        p,
+        {
+          left: r.left - box.left + host.scrollLeft,
+          right: r.right - box.left + host.scrollLeft,
+          top: r.top - box.top + host.scrollTop,
+          bottom: r.bottom - box.top + host.scrollTop,
+        },
+      ];
+    });
+    host.setPointerCapture(e.pointerId);
   }
 
   function onSurfacePointerMove(e: React.PointerEvent) {
-    const start = marqueeStart.current;
-    if (!start) return;
+    if (!marqueeStart.current) return;
     lastPointer.current = { x: e.clientX, y: e.clientY };
-    if (pendingFrame.current !== null) return;
-
-    const host = e.currentTarget;
     // One update per frame: pointermove fires far more often than the screen
     // refreshes, and every update re-renders the grid.
-    pendingFrame.current = requestAnimationFrame(() => {
-      pendingFrame.current = null;
-      const p = lastPointer.current;
-      const s = marqueeStart.current;
-      if (!p || !s) return;
-
-      const rect: Rect = {
-        left: Math.min(s.x, p.x),
-        right: Math.max(s.x, p.x),
-        top: Math.min(s.y, p.y),
-        bottom: Math.max(s.y, p.y),
-      };
-
-      // Hit-testing is in viewport coordinates; the overlay lives inside the
-      // scrolling box, so translate once here.
-      const box = host.getBoundingClientRect();
-      setMarquee({
-        left: rect.left - box.left + host.scrollLeft,
-        top: rect.top - box.top + host.scrollTop,
-        width: rect.right - rect.left,
-        height: rect.bottom - rect.top,
-      });
-
-      const hit = new Set(s.base);
-      for (const [path, tileBox] of tileBoxes.current) {
-        if (intersects(rect, tileBox)) hit.add(path);
-      }
-      // Skip the state update when nothing actually changed, so sweeping over
-      // empty space does not re-render every tile.
-      setSelection((prev) =>
-        prev.size === hit.size && [...hit].every((x) => prev.has(x))
-          ? prev
-          : hit,
-      );
-    });
+    if (marqueeFrame.current === null) {
+      marqueeFrame.current = requestAnimationFrame(runMarqueeFrame);
+    }
   }
+
+  /**
+   * Stop the marquee, wherever the release happened.
+   *
+   * Split from the React handler because a pointer released outside the
+   * window — over the desktop, another application, the browser's own chrome —
+   * never sends an event to the element, and the rectangle stayed on screen
+   * selecting whatever the pointer passed over next.
+   */
+  const stopMarquee = useCallback(() => {
+    if (!marqueeStart.current) return;
+    marqueeStart.current = null;
+    lastPointer.current = null;
+    if (marqueeFrame.current !== null) {
+      cancelAnimationFrame(marqueeFrame.current);
+      marqueeFrame.current = null;
+    }
+    tileBoxes.current = [];
+    setMarquee(null);
+  }, []);
+
+  useEffect(() => {
+    // `pointerup` on the window catches a release inside the page that missed
+    // the element; `blur` catches the one that happened outside it entirely,
+    // since leaving the window is the last thing we are told about.
+    window.addEventListener("pointerup", stopMarquee);
+    window.addEventListener("pointercancel", stopMarquee);
+    window.addEventListener("blur", stopMarquee);
+    return () => {
+      window.removeEventListener("pointerup", stopMarquee);
+      window.removeEventListener("pointercancel", stopMarquee);
+      window.removeEventListener("blur", stopMarquee);
+    };
+  }, [stopMarquee]);
 
   function endMarquee(e: React.PointerEvent) {
     if (!marqueeStart.current) return;
     marqueeStart.current = null;
-    if (pendingFrame.current !== null) {
-      cancelAnimationFrame(pendingFrame.current);
-      pendingFrame.current = null;
+    lastPointer.current = null;
+    if (marqueeFrame.current !== null) {
+      cancelAnimationFrame(marqueeFrame.current);
+      marqueeFrame.current = null;
     }
     tileBoxes.current = [];
     setMarquee(null);
@@ -1088,7 +1341,10 @@ export function FileManager() {
               animate={{ height: "auto", opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
               transition={{ duration: DUR.base, ease: EASE_OUT }}
-              className="overflow-hidden border-b bg-primary/5"
+              // Opaque, like the toolbar above it: a 5% tint over the dotted
+              // page let the dots show through the one bar that appears on top
+              // of the grid.
+              className="overflow-hidden border-b bg-accent"
             >
               <div className="flex items-center gap-2 px-4 py-2">
                 <span className="flex-1 text-sm font-medium">
@@ -1145,18 +1401,27 @@ export function FileManager() {
                 {t.files.emptyHint}
               </div>
             ) : (
-              <div
-                data-selection-surface=""
-                className="grid grid-cols-[repeat(auto-fill,minmax(104px,1fr))] gap-1"
-              >
-                <AnimatePresence mode="popLayout">
-                  {tiles.map((tile) =>
+              // Keyed by path: navigating replaces the grid rather than
+              // deleting and recreating forty tiles. The old `AnimatePresence
+              // mode="popLayout"` read a navigation as exactly that, pulling
+              // the outgoing tiles out of the flow — which is where the slide
+              // from the right came from.
+              <FolderGrid key={path || "__root__"} tiles={tiles}>
+                {({ animateEntry, animateLayout }) =>
+                  tiles.map((tile) =>
                     tile.job ? (
-                      <DownloadingTile key={tile.key} job={tile.job} />
+                      <DownloadingTile
+                        key={tile.key}
+                        job={tile.job}
+                        animateEntry={animateEntry}
+                        animateLayout={animateLayout}
+                      />
                     ) : (
                       <EntryTile
                         key={tile.key}
                         node={tile.node}
+                        animateEntry={animateEntry}
+                        animateLayout={animateLayout}
                         selected={selection.has(tile.node.path)}
                         selectionCount={
                           selection.has(tile.node.path) ? selection.size : 0
@@ -1175,9 +1440,9 @@ export function FileManager() {
                         registerRef={registerRef}
                       />
                     ),
-                  )}
-                </AnimatePresence>
-              </div>
+                  )
+                }
+              </FolderGrid>
             )}
 
             {marquee && (
