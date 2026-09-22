@@ -224,6 +224,7 @@ export const fr: Dictionary = {
       accounts: "Comptes",
     },
     sections: {
+      stats: "Statistiques",
       profile: "Profil",
       groupsSection: "Groupes",
       invites: "Invitations",
@@ -377,6 +378,14 @@ export const fr: Dictionary = {
           "Le groupe définit les valeurs par défaut. Ce qui est décidé ci-dessous ne vaut que pour cette personne.",
         limits: "Limites",
         close: "Fermer",
+        unsaved: "Modifications non enregistrées",
+        unsavedTitle: "Des modifications ne sont pas enregistrées",
+        unsavedWarning:
+          "Tu as changé quelque chose sans l'enregistrer. Tu peux enregistrer maintenant, abandonner ces changements, ou revenir au formulaire.",
+        keepEditing: "Continuer l'édition",
+        discard: "Abandonner",
+        saveWarning:
+          "Rien n'est appliqué tant que tu n'as pas enregistré.",
       },
 
       tri: {
@@ -400,6 +409,8 @@ export const fr: Dictionary = {
         maxConcurrentDownloadsHint:
           "Nombre de téléchargements que ce compte peut lancer en parallèle, dans la limite de l'instance.",
         unlimited: "Illimité",
+        instanceValue: (n: number) => `Réglage de l'instance (${n})`,
+        instanceCeiling: (n: number) => `maximum de l'instance (${n})`,
         custom: "Limite",
         unitGb: "Go",
         unitCount: "à la fois",
@@ -449,9 +460,11 @@ export const fr: Dictionary = {
         title: "Invitations",
         hint: "Le lien reprend l'adresse que tu utilises en ce moment — ouvre Siphon sur l'adresse que tu veux partager avant d'en créer une.",
         forWhom: "Pour qui ?",
-        forWhomPlaceholder: "ex. Alice",
+        forWhomPlaceholder: "Cécile",
         forWhomHint:
           "Affiché à la personne quand elle ouvre le lien, et à toi dans la liste ci-dessous. Facultatif.",
+        forWhomShared:
+          "Une invitation pour plusieurs personnes n'est adressée à personne en particulier : elle ne peut donc pas être nominative.",
         group: "Groupe",
         uses: "Utilisations",
         usesHint: "Un même lien peut créer plusieurs comptes.",
@@ -476,7 +489,7 @@ export const fr: Dictionary = {
       wholeLibrary: "Toute la bibliothèque",
       fileCount: "Fichiers",
       downloadCount: "Téléchargements",
-      fetched: "Récupéré",
+      fetched: "Téléchargé",
       completedCount: "Terminés",
       failedCount: "Échoués",
       lastDownload: "Dernier téléchargement",
@@ -515,7 +528,36 @@ export const fr: Dictionary = {
       turnedOff: "Second facteur désactivé",
     },
 
+    stats: {
+      title: "Statistiques",
+      description:
+        "Ce que ton compte a téléchargé, ce qu'il occupe et ce qu'il a le droit de faire.",
+      allowances: "Tes limites",
+      noLimit: "Aucune",
+      ofQuota: (used: string, total: string) => `${used} sur ${total}`,
+      cappedByInstance: "limité par l'instance",
+      fileCount: (n: number) => `${n} fichier${n > 1 ? "s" : ""}`,
+      outcome: (done: number, failed: number) =>
+        `${done} réussi${done > 1 ? "s" : ""}, ${failed} échoué${failed > 1 ? "s" : ""}`,
+      chartTitle: "Téléchargements par jour",
+      chartEmpty: "Aucun téléchargement ces trente derniers jours.",
+      downloads: (n: number) => `${n} téléchargement${n > 1 ? "s" : ""}`,
+      peak: (n: number) => `jusqu'à ${n} par jour`,
+      daysAgo: (n: number) => `il y a ${n} jours`,
+      today: "aujourd'hui",
+    },
+
     audit: {
+      changeCount: (n: number) => `· ${n} changement${n > 1 ? "s" : ""}`,
+      unset: "non défini",
+      fields: {
+        username: "Identifiant",
+        displayName: "Nom affiché",
+        groupId: "Groupe",
+        name: "Nom",
+        suspended: "Suspendu",
+        lockout: "Verrouillage",
+      },
       title: "Activité",
       description: "Connexions et modifications apportées à cette instance.",
       empty: "Rien d'enregistré pour l'instant.",

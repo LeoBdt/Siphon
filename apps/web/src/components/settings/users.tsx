@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
+  ChevronDown,
   Copy,
   HardDrive,
   History,
@@ -20,7 +21,14 @@ import {
   Users as UsersIcon,
 } from "lucide-react";
 import { toast } from "sonner";
-import type { Group, Invite, PermissionOverrides, User } from "@app/shared";
+import type {
+  AuditEntry,
+  Group,
+  Permissions,
+  Invite,
+  PermissionOverrides,
+  User,
+} from "@app/shared";
 import { MAX_DISPLAY_NAME, MAX_INVITE_USES } from "@app/shared";
 import {
   Card,
@@ -46,6 +54,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useI18n } from "@/components/i18n-provider";
+import type { Dictionary } from "@/lib/i18n";
 import {
   useAudit,
   useAuthState,
@@ -299,31 +308,24 @@ function UserRow({
  * a username is unique, and sending each intermediate spelling would collide
  * with other accounts on the way to a perfectly good one.
  */
+/**
+ * The name and username, held in the dialog's draft.
+ *
+ * It used to carry its own Save button while everything below it saved on
+ * change — two different contracts in one form, and no way to tell which half
+ * you had committed.
+ */
 function IdentityFields({
-  user,
-  onSave,
-  pending,
+  username,
+  displayName,
+  onChange,
 }: {
-  user: User;
-  onSave: (patch: { username?: string; displayName?: string | null }) => void;
-  pending: boolean;
+  username: string;
+  displayName: string;
+  onChange: (patch: { username?: string; displayName?: string }) => void;
 }) {
   const { t } = useI18n();
   const u = t.settings.users;
-  const [displayName, setDisplayName] = useState(user.displayName ?? "");
-  const [username, setUsername] = useState(user.username);
-  // Follow the account when it changes underneath, unless it is being typed in.
-  const [syncedFrom, setSyncedFrom] = useState(user.id + user.username + (user.displayName ?? ""));
-  const signature = user.id + user.username + (user.displayName ?? "");
-  if (syncedFrom !== signature) {
-    setSyncedFrom(signature);
-    setDisplayName(user.displayName ?? "");
-    setUsername(user.username);
-  }
-
-  const dirty =
-    username.trim() !== user.username ||
-    displayName.trim() !== (user.displayName ?? "");
 
   return (
     <div className="flex flex-col gap-2">
@@ -334,7 +336,7 @@ function IdentityFields({
           <Input
             value={displayName}
             maxLength={MAX_DISPLAY_NAME}
-            onChange={(e) => setDisplayName(e.target.value)}
+            onChange={(e) => onChange({ displayName: e.target.value })}
             className="h-9"
           />
         </label>
@@ -342,36 +344,46 @@ function IdentityFields({
           {t.settings.profile.username}
           <Input
             value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            onChange={(e) => onChange({ username: e.target.value })}
             className="h-9"
           />
         </label>
-        <Button
-          className="h-9"
-          disabled={!dirty || !username.trim() || pending}
-          onClick={() =>
-            onSave({
-              username: username.trim(),
-              displayName: displayName.trim() || null,
-            })
-          }
-        >
-          {pending && <Loader2 className="size-4 animate-spin" />}
-          {t.settings.profile.save}
-        </Button>
       </div>
       <p className="text-xs text-muted-foreground">{u.dialog.identityHint}</p>
     </div>
   );
 }
 
+/** The editable state of one account, before it is sent. */
+interface UserDraft {
+  username: string;
+  displayName: string;
+  groupId: string;
+  overrides: PermissionOverrides;
+}
+
+function draftOf(user: User): UserDraft {
+  return {
+    username: user.username,
+    displayName: user.displayName ?? "",
+    groupId: user.groupId,
+    overrides: { ...(user.overrides as PermissionOverrides) },
+  };
+}
+
+/** Whether anything in the draft differs from the account it came from. */
+function draftDiffers(draft: UserDraft, user: User): boolean {
+  return JSON.stringify(draft) !== JSON.stringify(draftOf(user));
+}
+
 /**
  * Everything about one account, in a dialog.
  *
- * Permissions save as they are changed rather than behind an Apply button: a
- * single field is being set, the server answers with the resulting account,
- * and a pending change that could be lost by closing the dialog would be worse
- * than an immediate one.
+ * Edited as a draft and saved on purpose. It used to write every change
+ * straight to the server, which looked like nothing was happening — no button
+ * to press, no confirmation, and a mis-click applied before you could see it.
+ * Now the form holds the change, the footer says there is one, and closing
+ * with something pending asks rather than deciding for you.
  */
 function UserDialog({
   user,
@@ -395,17 +407,60 @@ function UserDialog({
   const remove = useDeleteUser();
   const [confirming, setConfirming] = useState(false);
   const [typed, setTyped] = useState("");
+  /** Asked when closing would throw away an unsaved change. */
+  const [leaving, setLeaving] = useState(false);
+  const [draft, setDraft] = useState<UserDraft | null>(null);
+  // Follow the account the dialog was opened on, and any change made to it
+  // elsewhere — but never while it is being edited here.
+  const [syncedId, setSyncedId] = useState<string | null>(null);
+  if (user && syncedId !== user.id) {
+    setSyncedId(user.id);
+    setDraft(draftOf(user));
+  }
   // The issued link, held so it can be read and sent rather than caught in a
   // toast. Cleared with the dialog: it is one account's link, not the page's.
   const [link, setLink] = useState<string | null>(null);
 
-  if (!user) return null;
-  const group = groups.find((g) => g.id === user.groupId);
+  if (!user || !draft) return null;
+  const group = groups.find((g) => g.id === draft.groupId);
   const fail = (e: unknown) => toast.error(errorMessage(e));
+  const dirty = draftDiffers(draft, user);
+  const edit = (patch: Partial<UserDraft>) =>
+    setDraft((d) => (d ? { ...d, ...patch } : d));
+  const setOverride = (key: string, value: boolean | number | null | undefined) =>
+    setDraft((d) =>
+      d ? { ...d, overrides: { ...d.overrides, [key]: value ?? null } } : d,
+    );
+
+  function commit(then?: () => void) {
+    if (!user || !draft) return;
+    save.mutate(
+      {
+        id: user.id,
+        username: draft.username.trim(),
+        displayName: draft.displayName.trim() || null,
+        groupId: draft.groupId,
+        overrides: draft.overrides,
+      },
+      {
+        onSuccess: () => {
+          toast.success(u.saved);
+          then?.();
+        },
+        onError: fail,
+      },
+    );
+  }
+
+  /** Closing: ask first when something would be lost. */
+  function requestClose() {
+    if (dirty) setLeaving(true);
+    else onOpenChange(false);
+  }
 
   return (
     <>
-      <Dialog open onOpenChange={onOpenChange}>
+      <Dialog open onOpenChange={(o: boolean) => !o && requestClose()}>
         <DialogContent className="flex max-h-[85vh] flex-col gap-4 overflow-hidden sm:max-w-2xl">
           <DialogHeader className="pr-8">
             <DialogTitle className="flex flex-wrap items-baseline gap-2">
@@ -538,26 +593,16 @@ function UserDialog({
           )}
 
           <IdentityFields
-              user={user}
-              pending={save.isPending}
-              onSave={(patch) =>
-                save.mutate(
-                  { id: user.id, ...patch },
-                  {
-                    onSuccess: () => toast.success(u.saved),
-                    onError: fail,
-                  },
-                )
-              }
+              username={draft.username}
+              displayName={draft.displayName}
+              onChange={edit}
             />
 
           <div className="flex flex-col gap-1.5">
             <h4 className="text-sm font-semibold">{u.dialog.group}</h4>
             <Select
-              value={user.groupId}
-              onValueChange={(v) =>
-                v && save.mutate({ id: user.id, groupId: v }, { onError: fail })
-              }
+              value={draft.groupId}
+              onValueChange={(v: string | null) => v && edit({ groupId: v })}
             >
               <SelectTrigger className="h-9 bg-background">
                 <SelectValue>
@@ -584,13 +629,8 @@ function UserDialog({
             <UserPermissionGrid
               group={group}
               effective={user.effective}
-              overrides={user.overrides as PermissionOverrides}
-              onChange={(flag: Flag, value) =>
-                save.mutate(
-                  { id: user.id, overrides: { [flag]: value } },
-                  { onError: fail },
-                )
-              }
+              overrides={draft.overrides}
+              onChange={(flag: Flag, value) => setOverride(flag, value)}
             />
           </div>
 
@@ -599,20 +639,71 @@ function UserDialog({
             <UserLimitGrid
               group={group}
               effective={user.effective}
-              overrides={user.overrides as PermissionOverrides}
-              onChange={(limit: Limit, value) =>
-                save.mutate(
-                  // undefined means "inherit", which the API stores as null —
-                  // the same shape the boolean overrides use.
-                  { id: user.id, overrides: { [limit]: value ?? null } },
-                  { onError: fail },
-                )
-              }
+              overrides={draft.overrides}
+              // undefined means "inherit", which the API stores as null — the
+              // same shape the boolean overrides use.
+              onChange={(limit: Limit, value) => setOverride(limit, value)}
             />
           </div>
 
             <UserStats user={user} formatWhen={formatWhen} />
           </div>
+
+          {/* Outside the scrolling body, so it is reachable from anywhere in a
+              long form — and so it can say there is something to save without
+              having to be scrolled to. */}
+          <DialogFooter className="border-t pt-3">
+            <span className="mr-auto self-center text-xs text-muted-foreground">
+              {dirty ? u.dialog.unsaved : ""}
+            </span>
+            <Button variant="outline" onClick={requestClose}>
+              {t.common.cancel}
+            </Button>
+            <Button disabled={!dirty || !draft.username.trim() || save.isPending} onClick={() => commit()}>
+              {save.isPending && <Loader2 className="size-4 animate-spin" />}
+              {t.common.save}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Closing with something pending. Three ways out rather than two: the
+          usual mistake is meaning to close and losing the edit, and the usual
+          fix is offering to save it on the way. */}
+      <Dialog open={leaving} onOpenChange={setLeaving}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{u.dialog.unsavedTitle}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">{u.dialog.unsavedWarning}</p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLeaving(false)}>
+              {u.dialog.keepEditing}
+            </Button>
+            <Button
+              variant="ghost"
+              className="text-destructive hover:text-destructive"
+              onClick={() => {
+                setLeaving(false);
+                setDraft(draftOf(user));
+                onOpenChange(false);
+              }}
+            >
+              {u.dialog.discard}
+            </Button>
+            <Button
+              disabled={save.isPending}
+              onClick={() =>
+                commit(() => {
+                  setLeaving(false);
+                  onOpenChange(false);
+                })
+              }
+            >
+              {save.isPending && <Loader2 className="size-4 animate-spin" />}
+              {t.common.save}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -762,6 +853,48 @@ export function GroupsTab() {
   const [editing, setEditing] = useState<string | null>(null);
   const current = groups?.find((group) => group.id === editing) ?? null;
 
+  /**
+   * The group's permissions as they are being edited.
+   *
+   * Like the account dialog, and for the same reason: a group edit moves
+   * everyone in it at once, which is the last place that should happen on a
+   * stray click with no button pressed.
+   */
+  const [groupDraft, setGroupDraft] = useState<Permissions | null>(null);
+  const [leavingGroup, setLeavingGroup] = useState(false);
+  const [syncedGroup, setSyncedGroup] = useState<string | null>(null);
+  if (current && syncedGroup !== current.id) {
+    setSyncedGroup(current.id);
+    setGroupDraft({ ...current.permissions });
+  }
+
+  const groupDirty =
+    current != null &&
+    groupDraft != null &&
+    JSON.stringify(groupDraft) !== JSON.stringify(current.permissions);
+
+  const editGroup = (patch: Partial<Permissions>) =>
+    setGroupDraft((d) => (d ? { ...d, ...patch } : d));
+
+  function commitGroup(then?: () => void) {
+    if (!current || !groupDraft) return;
+    save.mutate(
+      { id: current.id, permissions: groupDraft },
+      {
+        onSuccess: () => {
+          toast.success(t.settings.users.saved);
+          then?.();
+        },
+        onError: (e) => toast.error(errorMessage(e)),
+      },
+    );
+  }
+
+  function requestCloseGroup() {
+    if (groupDirty) setLeavingGroup(true);
+    else setEditing(null);
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -827,7 +960,10 @@ export function GroupsTab() {
       </CardContent>
 
       {current && (
-        <Dialog open onOpenChange={(open) => !open && setEditing(null)}>
+        <Dialog
+          open
+          onOpenChange={(open: boolean) => !open && requestCloseGroup()}
+        >
           <DialogContent className="flex max-h-[85vh] flex-col gap-4 overflow-hidden sm:max-w-2xl">
             <DialogHeader className="pr-8">
               <DialogTitle>{groupName(current, t)}</DialogTitle>
@@ -877,14 +1013,9 @@ export function GroupsTab() {
                 {t.settings.users.dialog.permissions}
               </h4>
               <GroupPermissionGrid
-                permissions={current.permissions}
+                permissions={groupDraft ?? current.permissions}
                 disabled={current.id === "admin"}
-                onChange={(flag, value) =>
-                  save.mutate(
-                    { id: current.id, permissions: { [flag]: value } },
-                    { onError: (e) => toast.error(errorMessage(e)) },
-                  )
-                }
+                onChange={(flag, value) => editGroup({ [flag]: value })}
               />
             </div>
             <div>
@@ -892,25 +1023,69 @@ export function GroupsTab() {
                 {t.settings.users.dialog.limits}
               </h4>
               <GroupLimitGrid
-                permissions={current.permissions}
+                permissions={groupDraft ?? current.permissions}
                 disabled={current.id === "admin"}
-                onChange={(limit, value) =>
-                  save.mutate(
-                    { id: current.id, permissions: { [limit]: value } },
-                    { onError: (e) => toast.error(errorMessage(e)) },
-                  )
-                }
+                onChange={(limit, value) => editGroup({ [limit]: value })}
               />
               </div>
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setEditing(null)}>
-                {t.settings.users.dialog.close}
+            <DialogFooter className="border-t pt-3">
+              <span className="mr-auto self-center text-xs text-muted-foreground">
+                {groupDirty ? t.settings.users.dialog.unsaved : ""}
+              </span>
+              <Button variant="outline" onClick={requestCloseGroup}>
+                {t.common.cancel}
+              </Button>
+              <Button
+                disabled={!groupDirty || save.isPending}
+                onClick={() => commitGroup()}
+              >
+                {save.isPending && <Loader2 className="size-4 animate-spin" />}
+                {t.common.save}
               </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
       )}
+
+      <Dialog open={leavingGroup} onOpenChange={setLeavingGroup}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t.settings.users.dialog.unsavedTitle}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {t.settings.users.dialog.unsavedWarning}
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLeavingGroup(false)}>
+              {t.settings.users.dialog.keepEditing}
+            </Button>
+            <Button
+              variant="ghost"
+              className="text-destructive hover:text-destructive"
+              onClick={() => {
+                setLeavingGroup(false);
+                setGroupDraft(null);
+                setEditing(null);
+              }}
+            >
+              {t.settings.users.dialog.discard}
+            </Button>
+            <Button
+              disabled={save.isPending}
+              onClick={() =>
+                commitGroup(() => {
+                  setLeavingGroup(false);
+                  setEditing(null);
+                })
+              }
+            >
+              {save.isPending && <Loader2 className="size-4 animate-spin" />}
+              {t.common.save}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
@@ -964,21 +1139,31 @@ export function InvitesTab() {
         <div className="flex flex-col gap-3 rounded-xl border p-3">
           {/* A link several people will use is addressed to nobody, so there
               is no name to ask for — and the greeting on it says "Leo invites
-              you" rather than naming someone who is not the only recipient. */}
-          {maxUses === 1 && (
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="invite-label" className="text-sm font-medium">
-                {i.forWhom}
-              </label>
-              <Input
-                id="invite-label"
-                value={label}
-                onChange={(e) => setLabel(e.target.value)}
-                placeholder={i.forWhomPlaceholder}
-              />
-              <p className="text-xs text-muted-foreground">{i.forWhomHint}</p>
-            </div>
-          )}
+              you" rather than naming someone who is not the only recipient.
+              Dimmed rather than removed: the field vanishing as the count
+              passed one was abrupt, and it took the typed name with it. It
+              stays where it was, says why it is unavailable, and remembers
+              what was in it. */}
+          <div
+            className={cn(
+              "flex flex-col gap-1.5 transition-opacity duration-200",
+              maxUses > 1 && "opacity-50",
+            )}
+          >
+            <label htmlFor="invite-label" className="text-sm font-medium">
+              {i.forWhom}
+            </label>
+            <Input
+              id="invite-label"
+              value={label}
+              disabled={maxUses > 1}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder={i.forWhomPlaceholder}
+            />
+            <p className="text-xs text-muted-foreground">
+              {maxUses > 1 ? i.forWhomShared : i.forWhomHint}
+            </p>
+          </div>
 
           <div className="flex flex-wrap items-end gap-2">
             <div className="flex flex-col gap-1">
@@ -1164,7 +1349,7 @@ export function InvitesTab() {
 
 /** The audit trail: who did what, newest first. */
 export function ActivityTab() {
-  const { t, intl } = useI18n();
+  const { t } = useI18n();
   const { data: entries, isLoading } = useAudit();
   const a = t.settings.audit;
 
@@ -1187,21 +1372,7 @@ export function ActivityTab() {
             <table className="w-full text-sm">
               <tbody>
                 {entries.map((entry) => (
-                  <tr key={entry.id} className="border-b last:border-0">
-                    <td className="px-3 py-2 text-xs tabular-nums whitespace-nowrap text-muted-foreground">
-                      {formatDate(entry.at, intl)}
-                    </td>
-                    <td className="px-3 py-2">{a.actions[entry.action]}</td>
-                    <td className="px-3 py-2 text-muted-foreground">
-                      {entry.actorName ?? "—"}
-                      {entry.target && entry.target !== entry.actorName
-                        ? ` → ${entry.target}`
-                        : ""}
-                    </td>
-                    <td className="px-3 py-2 text-right text-xs text-muted-foreground">
-                      {entry.ip ?? ""}
-                    </td>
-                  </tr>
+                  <ActivityRow key={entry.id} entry={entry} />
                 ))}
               </tbody>
             </table>
@@ -1210,6 +1381,99 @@ export function ActivityTab() {
       </CardContent>
     </Card>
   );
+}
+
+/**
+ * One line of the log, with what it changed underneath.
+ *
+ * "Somebody edited a group" is where the question starts, not where it ends,
+ * and until the server recorded the fields there was nothing to show. Folded
+ * away by default: a log is read by scanning it, and a row that always shows
+ * six permission changes is a row nobody scans past.
+ */
+function ActivityRow({ entry }: { entry: AuditEntry }) {
+  const { t, intl } = useI18n();
+  const a = t.settings.audit;
+  const [open, setOpen] = useState(false);
+  const changes = entry.details ?? [];
+
+  return (
+    <>
+      <tr className={cn("border-b last:border-0", open && "border-b-0")}>
+        <td className="px-3 py-2 text-xs tabular-nums whitespace-nowrap text-muted-foreground">
+          {formatDate(entry.at, intl)}
+        </td>
+        <td className="px-3 py-2">
+          {changes.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => setOpen((v) => !v)}
+              className="flex items-center gap-1 text-left transition-colors hover:text-primary"
+            >
+              <ChevronDown
+                className={cn(
+                  "size-3 shrink-0 transition-transform duration-200",
+                  open && "rotate-180",
+                )}
+              />
+              {a.actions[entry.action]}
+              <span className="text-xs text-muted-foreground">
+                {a.changeCount(changes.length)}
+              </span>
+            </button>
+          ) : (
+            a.actions[entry.action]
+          )}
+        </td>
+        <td className="px-3 py-2 text-muted-foreground">
+          {entry.actorName ?? "—"}
+          {entry.target && entry.target !== entry.actorName
+            ? ` → ${entry.target}`
+            : ""}
+        </td>
+        <td className="px-3 py-2 text-right text-xs text-muted-foreground">
+          {entry.ip ?? ""}
+        </td>
+      </tr>
+      {open && (
+        <tr className="border-b last:border-0">
+          <td colSpan={4} className="px-3 pb-2">
+            <ul className="flex flex-col gap-1 border-l-2 border-primary/30 pl-3 text-xs">
+              {changes.map((change, i) => (
+                <li key={`${change.field}-${i}`} className="flex flex-wrap gap-1.5">
+                  <span className="font-medium">{auditFieldName(change.field, t)}</span>
+                  <span className="text-muted-foreground line-through">
+                    {change.from ?? a.unset}
+                  </span>
+                  <span className="text-muted-foreground">→</span>
+                  <span>{change.to ?? a.unset}</span>
+                </li>
+              ))}
+            </ul>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+/**
+ * A field's name, in the interface's own words.
+ *
+ * The server records raw keys on purpose — it has no business knowing the
+ * language this is read in — so the translation happens here, falling back to
+ * the key itself for anything recorded before this list knew about it.
+ */
+function auditFieldName(field: string, t: Dictionary): string {
+  const u = t.settings.users;
+  if (field in u.permissions) {
+    return u.permissions[field as keyof typeof u.permissions] as string;
+  }
+  if (field in u.limits) {
+    return u.limits[field as keyof typeof u.limits] as string;
+  }
+  const extra = t.settings.audit.fields as Record<string, string>;
+  return extra[field] ?? field;
 }
 
 // Re-exported so the flag list has one home.

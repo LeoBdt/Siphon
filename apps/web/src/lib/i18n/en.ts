@@ -240,6 +240,7 @@ export const en = {
       accounts: "Accounts",
     },
     sections: {
+      stats: "Statistics",
       profile: "Profile",
       groupsSection: "Groups",
       invites: "Invitations",
@@ -393,6 +394,13 @@ export const en = {
           "The group sets the defaults. Anything decided below overrides them for this person only.",
         limits: "Limits",
         close: "Close",
+        unsaved: "Unsaved changes",
+        unsavedTitle: "Some changes are not saved",
+        unsavedWarning:
+          "You changed something without saving it. You can save now, discard those changes, or go back to the form.",
+        keepEditing: "Keep editing",
+        discard: "Discard",
+        saveWarning: "Nothing is applied until you save.",
       },
 
       // Three states, because a permission has three: taken from the group,
@@ -421,6 +429,8 @@ export const en = {
         maxConcurrentDownloadsHint:
           "Downloads this account may run at once, within the instance limit.",
         unlimited: "Unlimited",
+        instanceValue: (n: number) => `Instance setting (${n})`,
+        instanceCeiling: (n: number) => `instance maximum (${n})`,
         custom: "Limit",
         unitGb: "GB",
         unitCount: "at a time",
@@ -474,9 +484,11 @@ export const en = {
         title: "Invitations",
         hint: "The link carries the address you are using right now — open Siphon on the address you want to share before creating one.",
         forWhom: "Who is it for?",
-        forWhomPlaceholder: "e.g. Alice",
+        forWhomPlaceholder: "Alice",
         forWhomHint:
           "Shown to them when they open the link, and to you in the list below. Optional.",
+        forWhomShared:
+          "An invitation several people will use is addressed to nobody in particular, so it cannot carry a name.",
         group: "Group",
         uses: "Uses",
         usesHint: "One link can create several accounts.",
@@ -499,7 +511,7 @@ export const en = {
       wholeLibrary: "Whole library",
       fileCount: "Files",
       downloadCount: "Downloads",
-      fetched: "Fetched",
+      fetched: "Downloaded",
       completedCount: "Completed",
       failedCount: "Failed",
       lastDownload: "Last download",
@@ -538,7 +550,35 @@ export const en = {
       turnedOff: "Second factor turned off",
     },
 
+    stats: {
+      title: "Statistics",
+      description:
+        "What your account has downloaded, what it takes up, and what it is allowed.",
+      allowances: "Your limits",
+      noLimit: "None",
+      ofQuota: (used: string, total: string) => `${used} of ${total}`,
+      cappedByInstance: "capped by the instance",
+      fileCount: (n: number) => `${n} file${n > 1 ? "s" : ""}`,
+      outcome: (done: number, failed: number) => `${done} done, ${failed} failed`,
+      chartTitle: "Downloads per day",
+      chartEmpty: "No downloads in the last thirty days.",
+      downloads: (n: number) => `${n} download${n > 1 ? "s" : ""}`,
+      peak: (n: number) => `up to ${n} a day`,
+      daysAgo: (n: number) => `${n} days ago`,
+      today: "today",
+    },
+
     audit: {
+      changeCount: (n: number) => `· ${n} change${n > 1 ? "s" : ""}`,
+      unset: "unset",
+      fields: {
+        username: "Username",
+        displayName: "Display name",
+        groupId: "Group",
+        name: "Name",
+        suspended: "Suspended",
+        lockout: "Lockout",
+      },
       title: "Activity",
       description: "Sign-ins and changes made to this instance.",
       empty: "Nothing recorded yet.",
