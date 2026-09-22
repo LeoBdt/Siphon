@@ -14,6 +14,7 @@ import {
 } from "@dnd-kit/core";
 import { AnimatePresence, motion } from "motion/react";
 import {
+  ChevronDown,
   ChevronRight,
   Download,
   File as FileIcon,
@@ -22,9 +23,13 @@ import {
   FileText,
   FileVideo,
   Folder,
+  FolderInput,
   Lock,
   FolderPlus,
   Home,
+  Info,
+  LayoutGrid,
+  List as ListIcon,
   Loader2,
   Pencil,
   Play,
@@ -38,10 +43,11 @@ import {
   useCreateFolder,
   useDeleteEntry,
   useDownloads,
+  useEntryInfo,
   useFiles,
   useMoveEntry,
 } from "@/lib/hooks";
-import { downloadUrl, streamUrl } from "@/lib/api";
+import { downloadUrl, streamUrl, thumbUrl } from "@/lib/api";
 import { EASE_OUT, DUR, SPRING_SNAP } from "@/lib/motion";
 import { usePlayer } from "@/components/player";
 import { useI18n, useT } from "@/components/i18n-provider";
@@ -62,7 +68,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { formatBytes } from "@/lib/format";
+import { formatBytes, formatDate } from "@/lib/format";
+import { FolderPicker } from "@/components/folder-picker";
 import { ACTIVE_STATUSES, phaseLabel } from "@/lib/job-phase";
 import { cn } from "@/lib/utils";
 
@@ -157,6 +164,21 @@ function triggerDownload(path: string) {
   document.body.appendChild(a);
   a.click();
   a.remove();
+}
+
+/**
+ * A filename without its extension.
+ *
+ * The grid sorts on this so that a download in progress and the file it
+ * becomes compare identically — see the tiles memo.
+ */
+function stemOf(name: string): string {
+  return name.replace(/\.[^.]+$/, "");
+}
+
+/** ".mp4" for a name that has one, "" otherwise. */
+function extensionOf(name: string): string {
+  return name.match(/\.[^.]+$/)?.[0] ?? "";
 }
 
 /** Filename yt-dlp finally wrote, or null while it is still working. */
@@ -278,6 +300,8 @@ const EntryTile = memo(function EntryTile({
   onDelete,
   onPlay,
   onDownload,
+  onMove,
+  onInfo,
   registerRef,
   selectionCount,
   wink,
@@ -294,6 +318,8 @@ const EntryTile = memo(function EntryTile({
   onDelete: (n: FileNode) => void;
   onPlay: (n: FileNode) => void;
   onDownload: (n: FileNode) => void;
+  onMove: (n: FileNode) => void;
+  onInfo: (n: FileNode) => void;
   registerRef: (path: string, el: HTMLElement | null) => void;
   /** Size of the selection, but only when this tile is in it — otherwise 0, so
    *  growing the selection does not invalidate every other tile's props. */
@@ -400,26 +426,13 @@ const EntryTile = memo(function EntryTile({
         }
       >
         <div className="relative flex size-14 items-center justify-center">
-          {kind === "image" ? (
-            // `lazy`: this is the full-size file standing in for a thumbnail,
-            // so a folder of photographs was downloading every one of them at
-            // once. Until the API serves real thumbnails, at least let the
-            // browser fetch only what is on screen.
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={streamUrl(node.path)}
-              alt=""
-              loading="lazy"
-              decoding="async"
-              className="size-14 rounded-md object-cover"
-            />
-          ) : (
+          <Thumbnail node={node}>
             <EntryIcon
               node={node}
               className="size-11"
               asPlainFolder={costumeHidden}
             />
-          )}
+          </Thumbnail>
           {wink && !costumeHidden && <ConfettiBurst />}
           {costume && (
             // It wears the costume, but it never stops being a folder.
@@ -476,10 +489,20 @@ const EntryTile = memo(function EntryTile({
           <Download className="size-4" />
           {bulk ? t.files.downloadSelected : t.files.downloadEntry(isDir)}
         </ContextMenuItem>
+        <ContextMenuItem onClick={() => onMove(node)}>
+          <FolderInput className="size-4" />
+          {bulk ? t.files.moveSelected : t.files.move}
+        </ContextMenuItem>
         {!bulk && (
           <ContextMenuItem onClick={() => onRename(node)}>
             <Pencil className="size-4" />
             {t.files.rename}
+          </ContextMenuItem>
+        )}
+        {!bulk && (
+          <ContextMenuItem onClick={() => onInfo(node)}>
+            <Info className="size-4" />
+            {t.files.info}
           </ContextMenuItem>
         )}
         <ContextMenuSeparator />
@@ -491,6 +514,47 @@ const EntryTile = memo(function EntryTile({
     </ContextMenu>
   );
 });
+
+/**
+ * A file's preview image, falling back to its icon.
+ *
+ * The server makes these with ffmpeg — a frame from a video, the cover art
+ * embedded in an audio file, a scaled copy of an image — and answers 404 when
+ * there is nothing to show, which is the ordinary case for an audio file with
+ * no cover. Rather than asking first and drawing second, the icon is drawn
+ * immediately and the image covers it once it has loaded; a preview that never
+ * arrives simply leaves the icon in place.
+ *
+ * Loaded lazily, so a folder of two hundred files fetches what is on screen
+ * and nothing else.
+ */
+function Thumbnail({
+  node,
+  children,
+}: {
+  node: FileNode;
+  children: React.ReactNode;
+}) {
+  const [failed, setFailed] = useState(false);
+  const previewable = node.type !== "directory" && mediaKind(node) !== null;
+
+  return (
+    <>
+      {children}
+      {previewable && !failed && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={thumbUrl(node.path, node.modifiedAt)}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          onError={() => setFailed(true)}
+          className="absolute inset-0 size-14 rounded-md bg-muted object-cover"
+        />
+      )}
+    </>
+  );
+}
 
 // --- In-flight download tile ----------------------------------------------
 
@@ -587,6 +651,250 @@ function useThrottled<T>(value: T, ms: number): T {
 
 /** How often the grid may follow the download progress, in milliseconds. */
 const PROGRESS_TICK = 250;
+
+type ViewMode = "grid" | "list";
+
+const VIEW_KEY = "files:view";
+
+/**
+ * Grid or list, remembered per browser.
+ *
+ * Grid by default: it is what the explorer has always been, and it is the
+ * mode where a preview earns its place. The list is for working — it shows
+ * size and date, sorts by them, and draws no images at all, which is what
+ * makes a folder of hundreds pleasant rather than merely possible.
+ */
+function useViewMode(): [ViewMode, (v: ViewMode) => void] {
+  const [mode, setMode] = useState<ViewMode>("grid");
+
+  // Read on mount only: the server render has no localStorage, so adopting the
+  // stored value during render would differ from the markup sent.
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(VIEW_KEY);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (stored === "list" || stored === "grid") setMode(stored);
+    } catch {
+      // Private mode or storage disabled: the default stands.
+    }
+  }, []);
+
+  const choose = useCallback((v: ViewMode) => {
+    setMode(v);
+    try {
+      window.localStorage.setItem(VIEW_KEY, v);
+    } catch {
+      // The choice simply will not outlive the session.
+    }
+  }, []);
+
+  return [mode, choose];
+}
+
+// --- List view ------------------------------------------------------------
+
+/** What the list is ordered by. */
+type SortKey = "name" | "size" | "modified";
+
+/**
+ * One row of the list view.
+ *
+ * No preview image and no animation library: a row is a handful of DOM nodes
+ * and nothing else, which is the whole reason this view exists. Folders still
+ * open on a double click and everything still answers to the context menu, so
+ * nothing is lost by working here rather than in the grid.
+ */
+const EntryRow = memo(function EntryRow({
+  node,
+  selected,
+  onSelect,
+  onOpen,
+  onRename,
+  onDelete,
+  onPlay,
+  onDownload,
+  onMove,
+  onInfo,
+  registerRef,
+  selectionCount,
+}: {
+  node: FileNode;
+  selected: boolean;
+  onSelect: (n: FileNode, e: React.MouseEvent) => void;
+  onOpen: (n: FileNode) => void;
+  onRename: (n: FileNode) => void;
+  onDelete: (n: FileNode) => void;
+  onPlay: (n: FileNode) => void;
+  onDownload: (n: FileNode) => void;
+  onMove: (n: FileNode) => void;
+  onInfo: (n: FileNode) => void;
+  registerRef: (path: string, el: HTMLElement | null) => void;
+  selectionCount: number;
+}) {
+  const { t, intl } = useI18n();
+  const isDir = node.type === "directory";
+  const kind = mediaKind(node);
+  const playable = kind === "video" || kind === "audio";
+  const bulk = selected && selectionCount > 1;
+
+  const { attributes, listeners, setNodeRef: dragRef, isDragging } =
+    useDraggable({ id: node.path, data: { node } });
+  const { setNodeRef: dropRef, isOver } = useDroppable({
+    id: `drop:${node.path}`,
+    data: { node },
+    disabled: !isDir,
+  });
+  const setRefs = (el: HTMLElement | null) => {
+    dragRef(el);
+    if (isDir) dropRef(el);
+    registerRef(node.path, el);
+  };
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger
+        render={
+          <div
+            ref={setRefs}
+            {...listeners}
+            {...attributes}
+            data-selected={selected || undefined}
+            onClick={(e: React.MouseEvent) => onSelect(node, e)}
+            onDoubleClick={() => onOpen(node)}
+            className={cn(
+              "grid cursor-default grid-cols-[1fr_6rem_9rem] items-center gap-3 rounded-lg border border-transparent px-2 py-1.5 text-sm transition-colors",
+              selected
+                ? "border-primary/60 bg-primary/10"
+                : "hover:bg-accent",
+              isOver && isDir && "border-primary bg-primary/10",
+              isDragging && "opacity-40",
+            )}
+          />
+        }
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <EntryIcon node={node} className="size-4 shrink-0" />
+          <span className="truncate" title={node.name}>
+            {node.name}
+          </span>
+        </span>
+        <span className="text-right tabular-nums text-muted-foreground">
+          {isDir ? "—" : formatBytes(node.sizeBytes, intl)}
+        </span>
+        <span className="text-right tabular-nums text-muted-foreground">
+          {formatDate(node.modifiedAt, intl)}
+        </span>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        {isDir && !bulk && (
+          <ContextMenuItem onClick={() => onOpen(node)}>
+            <Folder className="size-4" />
+            {t.files.open}
+          </ContextMenuItem>
+        )}
+        {playable && !bulk && (
+          <ContextMenuItem onClick={() => onPlay(node)}>
+            <Play className="size-4" />
+            {t.files.play}
+          </ContextMenuItem>
+        )}
+        <ContextMenuItem onClick={() => onDownload(node)}>
+          <Download className="size-4" />
+          {bulk ? t.files.downloadSelected : t.files.downloadEntry(isDir)}
+        </ContextMenuItem>
+        <ContextMenuItem onClick={() => onMove(node)}>
+          <FolderInput className="size-4" />
+          {bulk ? t.files.moveSelected : t.files.move}
+        </ContextMenuItem>
+        {!bulk && (
+          <ContextMenuItem onClick={() => onRename(node)}>
+            <Pencil className="size-4" />
+            {t.files.rename}
+          </ContextMenuItem>
+        )}
+        {!bulk && (
+          <ContextMenuItem onClick={() => onInfo(node)}>
+            <Info className="size-4" />
+            {t.files.info}
+          </ContextMenuItem>
+        )}
+        <ContextMenuSeparator />
+        <ContextMenuItem variant="destructive" onClick={() => onDelete(node)}>
+          <Trash2 className="size-4" />
+          {bulk ? t.files.deleteSelected : t.common.delete}
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  );
+});
+
+/** One row for a download still on its way in, in the list view. */
+const DownloadingRow = memo(function DownloadingRow({ job }: { job: DownloadJob }) {
+  const t = useT();
+  const done = job.status === "completed";
+  const progress = done ? 1 : job.progress;
+  const label = done ? t.files.almostThere : phaseLabel(job, t);
+
+  return (
+    <div className="grid grid-cols-[1fr_6rem_9rem] items-center gap-3 rounded-lg px-2 py-1.5 text-sm">
+      <span className="flex min-w-0 items-center gap-2">
+        <Loader2 className="size-4 shrink-0 animate-spin text-primary" />
+        <span className="truncate" title={job.title ?? job.url}>
+          {job.title ?? t.files.downloadingHere}
+        </span>
+      </span>
+      <span className="text-right tabular-nums text-primary">
+        {job.status === "downloading" ? `${Math.round(progress * 100)}%` : ""}
+      </span>
+      <span className="truncate text-right text-muted-foreground">{label}</span>
+    </div>
+  );
+});
+
+/** The sortable header row of the list view. */
+function ColumnHeaders({
+  sortKey,
+  sortAsc,
+  onSort,
+}: {
+  sortKey: SortKey;
+  sortAsc: boolean;
+  onSort: (k: SortKey) => void;
+}) {
+  const t = useT();
+  const columns: [SortKey, string, boolean][] = [
+    ["name", t.files.columnName, false],
+    ["size", t.files.columnSize, true],
+    ["modified", t.files.columnModified, true],
+  ];
+
+  return (
+    <div className="sticky top-0 z-10 grid grid-cols-[1fr_6rem_9rem] gap-3 border-b bg-background px-2 pb-1.5 text-xs text-muted-foreground">
+      {columns.map(([key, label, alignRight]) => (
+        <button
+          key={key}
+          type="button"
+          onClick={() => onSort(key)}
+          className={cn(
+            "flex items-center gap-1 transition-colors hover:text-foreground",
+            alignRight && "justify-end",
+            sortKey === key && "text-foreground",
+          )}
+        >
+          {label}
+          {sortKey === key && (
+            <ChevronDown
+              className={cn(
+                "size-3 transition-transform",
+                sortAsc && "rotate-180",
+              )}
+            />
+          )}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 // --- Folder grid ----------------------------------------------------------
 
@@ -697,6 +1005,11 @@ export function FileManager() {
   const [renameTarget, setRenameTarget] = useState<FileNode | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [newFolderOpen, setNewFolderOpen] = useState(false);
+  /** Entries waiting for a destination, while the folder picker is open. */
+  const [moving, setMoving] = useState<FileNode[] | null>(null);
+  const [view, setView] = useViewMode();
+  const [sortKey, setSortKey] = useState<SortKey>("name");
+  const [sortAsc, setSortAsc] = useState(true);
   const [newFolderName, setNewFolderName] = useState("");
   // Path of the folder that just put on a costume, for a one-off shimmy.
   const [winkPath, setWinkPath] = useState<string | null>(null);
@@ -709,7 +1022,36 @@ export function FileManager() {
   // Media extension currently typed in the rename box, e.g. ".mp4".
   const typedExt = renameValue.trim().match(MEDIA_EXT_RE)?.[0]?.toLowerCase();
 
-  const entries = useMemo(() => data?.entries ?? [], [data]);
+  /**
+   * The folder's entries, keeping the object identity of anything unchanged.
+   *
+   * Every refetch parses fresh JSON, so each entry arrived as a brand new
+   * object even when nothing about it had changed — which broke the tiles'
+   * memoisation and re-rendered the whole grid. Something as ordinary as one
+   * download finishing therefore made every file in the folder redraw, and
+   * animate. An entry is the same entry when its path, size and modification
+   * time are; on that basis the previous object is handed back.
+   */
+  const entryCache = useRef(new Map<string, FileNode>());
+  const entries = useMemo(() => {
+    const seen = new Map<string, FileNode>();
+    const list = (data?.entries ?? []).map((fresh) => {
+      const known = entryCache.current.get(fresh.path);
+      const same =
+        known &&
+        known.sizeBytes === fresh.sizeBytes &&
+        known.modifiedAt === fresh.modifiedAt &&
+        known.type === fresh.type &&
+        known.isPrivate === fresh.isPrivate;
+      const node = same ? known : fresh;
+      seen.set(node.path, node);
+      return node;
+    });
+    // Replaced rather than added to, so a folder left behind does not keep
+    // its entries alive for the rest of the session.
+    entryCache.current = seen;
+    return list;
+  }, [data]);
 
   // State clock for the placeholder hold below (see the tiles memo).
   const [now, setNow] = useState(() => Date.now());
@@ -771,13 +1113,20 @@ export function FileManager() {
    * for the real entry once the listing catches up — so the download turns
    * into the file, in place, instead of a second square appearing beside it.
    *
-   * Placeholders are sorted where the finished file will land — yt-dlp names
-   * the output after the video title — so nothing jumps at the swap.
+   * Everything is sorted on the same thing: the name without its extension.
+   * A download in progress is sorted by the name reserved for it before it
+   * started, which is the name the file will carry — so the placeholder sits
+   * exactly where the file will, and becoming that file moves nothing. Sorting
+   * one on the title and the other on the full filename put them in different
+   * places often enough ("Title" against "Title 2" flips once ".m4a" is in the
+   * comparison), and the whole grid shuffled every time an entry finished.
    */
   const tiles = useMemo<Tile[]>(() => {
     const collator = new Intl.Collator(intl, { sensitivity: "base" });
     const claimed = new Set<string>();
     const files: Tile[] = [];
+    /** What a download will be called, falling back to its title. */
+    const plannedOf = (job: DownloadJob) => job.plannedName ?? job.title ?? "";
 
     for (const job of jobsHere) {
       const entry = matchingEntry(job);
@@ -785,9 +1134,9 @@ export function FileManager() {
       if (entry && !claimed.has(entry.path)) {
         // The file has landed: the job's tile becomes that file.
         claimed.add(entry.path);
-        files.push({ key: `job:${job.id}`, sortAs: entry.name, node: entry });
+        files.push({ key: `job:${job.id}`, sortAs: stemOf(entry.name), node: entry });
       } else if (ACTIVE_STATUSES.includes(job.status)) {
-        files.push({ key: `job:${job.id}`, sortAs: job.title ?? "", job });
+        files.push({ key: `job:${job.id}`, sortAs: plannedOf(job), job });
       } else if (job.status === "completed" && job.outputFile) {
         // Finished, but not in the listing yet. Hold the placeholder so the
         // grid does not reflow twice while the refetch is in flight.
@@ -801,14 +1150,14 @@ export function FileManager() {
         const finishedAt = new Date(job.updatedAt).getTime();
         const listingIsNewer = dataUpdatedAt > finishedAt;
         if (!listingIsNewer && now - finishedAt < GRACE_MS) {
-          files.push({ key: `job:${job.id}`, sortAs: job.title ?? "", job });
+          files.push({ key: `job:${job.id}`, sortAs: plannedOf(job), job });
         }
       }
     }
 
     for (const e of entries) {
       if (e.type === "directory" || claimed.has(e.path)) continue;
-      files.push({ key: e.path, sortAs: e.name, node: e });
+      files.push({ key: e.path, sortAs: stemOf(e.name), node: e });
     }
     files.sort((a, b) => collator.compare(a.sortAs, b.sortAs));
 
@@ -819,6 +1168,37 @@ export function FileManager() {
       ...files,
     ];
   }, [entries, jobsHere, intl, matchingEntry, dataUpdatedAt, now]);
+
+  /**
+   * The same tiles, ordered by whichever column the list is sorted on.
+   *
+   * Folders stay above files whatever the column: a folder has no size and no
+   * meaningful place in a list of them, and mixing the two is how a sort turns
+   * a familiar folder into a stranger.
+   */
+  const rows = useMemo(() => {
+    if (view !== "list" || sortKey === "name") {
+      return sortAsc ? tiles : [...tiles].reverse();
+    }
+    const collator = new Intl.Collator(intl, { sensitivity: "base" });
+    const weight = (tile: Tile) =>
+      tile.node?.type === "directory" ? 0 : 1;
+    const value = (tile: Tile) => {
+      if (!tile.node) return 0;
+      return sortKey === "size"
+        ? (tile.node.sizeBytes ?? 0)
+        : new Date(tile.node.modifiedAt).getTime();
+    };
+    return [...tiles].sort((a, b) => {
+      const byKind = weight(a) - weight(b);
+      if (byKind !== 0) return byKind;
+      // A download still in flight has neither size nor date; it keeps its
+      // place by name rather than piling up at one end.
+      if (!a.node || !b.node) return collator.compare(a.sortAs, b.sortAs);
+      const diff = value(a) - value(b);
+      return sortAsc ? diff : -diff;
+    });
+  }, [tiles, view, sortKey, sortAsc, intl]);
 
   // Advance the clock only while a placeholder is actually being held, and
   // stop as soon as none are: a timer that keeps running would re-render this
@@ -1232,6 +1612,47 @@ export function FileManager() {
   );
 
   /**
+   * Move one entry, or the whole selection, through the folder picker.
+   *
+   * Dragging already moves things, but only to a folder that happens to be on
+   * screen — which rules out moving something up and across the tree, the very
+   * case where dragging is worst.
+   */
+  const runMove = useCallback(
+    (n?: FileNode) => {
+      const batch = n && !selection.has(n.path) ? [n] : selectedNodes;
+      if (batch.length > 0) setMoving(batch);
+    },
+    [selection, selectedNodes],
+  );
+
+  async function moveTo(target: string) {
+    const batch = moving;
+    setMoving(null);
+    if (!batch || target === path) return;
+    try {
+      for (const item of batch) {
+        await move.mutateAsync({
+          from: item.path,
+          to: target ? `${target}/${item.name}` : item.name,
+        });
+      }
+      const where = target || t.files.root;
+      toast.success(
+        batch.length > 1
+          ? t.files.movedMany(batch.length, where)
+          : t.files.moved(where),
+      );
+      setSelection(new Set());
+    } catch (err) {
+      toast.error(errorMessage(err));
+    }
+  }
+
+  /** The entry whose properties are on screen, if any. */
+  const [infoTarget, setInfoTarget] = useState<FileNode | null>(null);
+
+  /**
    * Both handlers above necessarily change identity whenever the selection
    * does. Handing them straight to the tiles would re-render every tile on
    * every frame of a marquee drag, which is exactly what `memo` on EntryTile is
@@ -1239,10 +1660,10 @@ export function FileManager() {
    * current version through a ref, so a tile's props only change when that
    * tile's own selected state does.
    */
-  const latest = useRef({ runDelete, runDownload });
+  const latest = useRef({ runDelete, runDownload, runMove });
   useEffect(() => {
-    latest.current = { runDelete, runDownload };
-  }, [runDelete, runDownload]);
+    latest.current = { runDelete, runDownload, runMove };
+  }, [runDelete, runDownload, runMove]);
 
   const handleDelete = useCallback(
     (n?: FileNode) => latest.current.runDelete(n),
@@ -1252,6 +1673,8 @@ export function FileManager() {
     (n?: FileNode) => latest.current.runDownload(n),
     [],
   );
+  const handleMove = useCallback((n?: FileNode) => latest.current.runMove(n), []);
+  const handleInfo = useCallback((n: FileNode) => setInfoTarget(n), []);
 
   async function handleCreateFolder() {
     const name = newFolderName.trim();
@@ -1318,6 +1741,19 @@ export function FileManager() {
             <FolderPlus className="size-4" />
             {t.files.newFolder}
           </Button>
+          {/* Two states, so one button that shows what it will switch to. */}
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            onClick={() => setView(view === "grid" ? "list" : "grid")}
+            title={view === "grid" ? t.files.viewList : t.files.viewGrid}
+          >
+            {view === "grid" ? (
+              <ListIcon className="size-4" />
+            ) : (
+              <LayoutGrid className="size-4" />
+            )}
+          </Button>
           <Button
             size="icon-sm"
             variant="ghost"
@@ -1353,6 +1789,10 @@ export function FileManager() {
                 <Button size="sm" variant="ghost" onClick={() => handleDownload()}>
                   <Download className="size-4" />
                   {t.files.download}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => handleMove()}>
+                  <FolderInput className="size-4" />
+                  {t.files.move}
                 </Button>
                 <Button
                   size="sm"
@@ -1400,6 +1840,45 @@ export function FileManager() {
                 <Folder className="size-10" />
                 {t.files.emptyHint}
               </div>
+            ) : view === "list" ? (
+              <div data-selection-surface="" className="flex flex-col">
+                <ColumnHeaders
+                  sortKey={sortKey}
+                  sortAsc={sortAsc}
+                  onSort={(k) => {
+                    // Clicking the active column reverses it; a new column
+                    // starts ascending, which is what every file manager does.
+                    if (k === sortKey) setSortAsc((v) => !v);
+                    else {
+                      setSortKey(k);
+                      setSortAsc(true);
+                    }
+                  }}
+                />
+                {rows.map((tile) =>
+                  tile.job ? (
+                    <DownloadingRow key={tile.key} job={tile.job} />
+                  ) : (
+                    <EntryRow
+                      key={tile.key}
+                      node={tile.node}
+                      selected={selection.has(tile.node.path)}
+                      selectionCount={
+                        selection.has(tile.node.path) ? selection.size : 0
+                      }
+                      onSelect={handleSelect}
+                      onOpen={openNode}
+                      onPlay={play}
+                      onDownload={handleDownload}
+                      onMove={handleMove}
+                      onInfo={handleInfo}
+                      onRename={startRename}
+                      onDelete={handleDelete}
+                      registerRef={registerRef}
+                    />
+                  ),
+                )}
+              </div>
             ) : (
               // Keyed by path: navigating replaces the grid rather than
               // deleting and recreating forty tiles. The old `AnimatePresence
@@ -1435,6 +1914,8 @@ export function FileManager() {
                         onOpen={openNode}
                         onPlay={play}
                         onDownload={handleDownload}
+                        onMove={handleMove}
+                        onInfo={handleInfo}
                         onRename={startRename}
                         onDelete={handleDelete}
                         registerRef={registerRef}
@@ -1572,6 +2053,105 @@ export function FileManager() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Move: the folder picker, opened on a batch of entries. */}
+      {moving && (
+        <FolderPicker
+          open
+          onOpenChange={(o: boolean) => !o && setMoving(null)}
+          initialPath={path}
+          title={t.files.movePickerTitle}
+          confirmLabel={t.files.moveHere}
+          onSelect={moveTo}
+        />
+      )}
+
+      <EntryInfoDialog
+        node={infoTarget}
+        onClose={() => setInfoTarget(null)}
+      />
     </DndContext>
+  );
+}
+
+// --- Properties -----------------------------------------------------------
+
+/**
+ * What an entry is: the panel every file manager has and this one lacked.
+ *
+ * A folder's size arrives from the server, which walks it on request — the
+ * listing cannot know it, and the one place the question is actually asked is
+ * here.
+ */
+function EntryInfoDialog({
+  node,
+  onClose,
+}: {
+  node: FileNode | null;
+  onClose: () => void;
+}) {
+  const { t, intl } = useI18n();
+  const { data, isLoading } = useEntryInfo(node?.path ?? null);
+  const shown = data?.node ?? node;
+
+  const folder = node?.path.split("/").slice(0, -1).join("/");
+  const ext = node ? extensionOf(node.name) : "";
+
+  return (
+    <Dialog open={node !== null} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="truncate">{node?.name}</DialogTitle>
+        </DialogHeader>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
+          <Property label={t.files.infoKind}>
+            {node?.type === "directory"
+              ? t.files.infoKindFolder
+              : t.files.infoKindFile(ext.replace(".", "").toUpperCase())}
+          </Property>
+          <Property label={t.files.infoSize}>
+            {/* A folder has to be walked, so it shows a placeholder until the
+                answer comes back rather than a misleading dash. */}
+            {isLoading && node?.type === "directory"
+              ? t.common.loading
+              : formatBytes(shown?.sizeBytes, intl)}
+          </Property>
+          {data?.contents && (
+            <Property label={t.files.infoContents}>
+              {t.files.infoContentsValue(
+                data.contents.files,
+                data.contents.folders,
+              )}
+            </Property>
+          )}
+          <Property label={t.files.infoModified}>
+            {shown ? formatDate(shown.modifiedAt, intl) : "—"}
+          </Property>
+          <Property label={t.files.infoLocation}>
+            {folder || t.files.infoLocationRoot}
+          </Property>
+        </dl>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            {t.common.close}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function Property({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <>
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 break-words">{children}</dd>
+    </>
   );
 }

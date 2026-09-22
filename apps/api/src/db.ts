@@ -56,6 +56,9 @@ for (const col of [
   "errorCode TEXT",
   "retention TEXT NOT NULL DEFAULT 'library'",
   "userId TEXT",
+  // The name claimed for the file before the download starts, so the
+  // explorer can place the tile where the finished file will land.
+  "plannedName TEXT",
 ]) {
   try {
     db.exec(`ALTER TABLE downloads ADD COLUMN ${col}`);
@@ -86,6 +89,7 @@ type Row = {
   errorMessage: string | null;
   speedBytesPerSec: number | null;
   etaSeconds: number | null;
+  plannedName: string | null;
   playlistId: string | null;
   isPlaylistParent: number;
   childCount: number | null;
@@ -116,6 +120,7 @@ function rowToJob(r: Row): DownloadJob {
     playlistId: r.playlistId,
     isPlaylistParent: r.isPlaylistParent === 1,
     childCount: r.childCount,
+    plannedName: r.plannedName ?? null,
     // Filled in by the listing for playlist parents — see `withChildCounts`.
     completedCount: null,
     failedCount: null,
@@ -213,6 +218,7 @@ type Patch = Partial<
     | "etaSeconds"
     | "childCount"
     | "phase"
+    | "plannedName"
   >
 >;
 

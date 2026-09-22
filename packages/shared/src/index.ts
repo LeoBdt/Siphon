@@ -101,6 +101,15 @@ export interface DownloadJob {
   playlistId: string | null;
   /** True for the parent aggregate job of a playlist/channel. */
   isPlaylistParent: boolean;
+  /**
+   * The filename claimed for this download, without its extension.
+   *
+   * Known before the download starts, because the name is reserved then — and
+   * that is what makes it useful: the explorer can put the in-progress tile
+   * exactly where the finished file will sort, so nothing shifts when one
+   * becomes the other. Null on jobs that ran before this existed.
+   */
+  plannedName: string | null;
   /** For a parent: number of child jobs. */
   childCount: number | null;
   /**
@@ -234,6 +243,18 @@ export interface FileNode {
    * pretending otherwise.
    */
   isPrivate?: boolean;
+}
+
+/**
+ * One entry's properties, for the explorer's information panel.
+ *
+ * A folder arrives with the size of everything under it — walked on request,
+ * never in a listing — and with what it holds. `contents` is null for a file,
+ * which is not a question worth asking of one.
+ */
+export interface EntryInfo {
+  node: FileNode;
+  contents: { files: number; folders: number } | null;
 }
 
 export interface ListDirResponse {

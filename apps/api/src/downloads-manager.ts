@@ -214,6 +214,10 @@ async function runJob(jobId: string): Promise<void> {
   // of one playlist can carry the same title, and the winner would otherwise
   // be decided by whichever finished moving its file first.
   const name = await reserveOutputStem(destDir, job.title, job.id);
+  // Published straight away: the explorer sorts the in-progress tile by this,
+  // so the tile sits where the finished file will, and turning one into the
+  // other moves nothing.
+  emit(updateJob(jobId, { plannedName: name.stem }));
 
   const handle = runDownload({
     url: job.url,
