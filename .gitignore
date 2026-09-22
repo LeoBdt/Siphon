@@ -19,9 +19,16 @@ out/
 # route at apps/web/src/app/settings/downloads/.
 /data/
 /downloads/
+# Where the API actually writes when it is run from the workspace: its own
+# `data/` holds the database, the library and the scratch space. Only `/data/`
+# was listed, so a whole music library sat untracked-but-committable.
+/apps/api/data/
 *.sqlite
 *.sqlite-journal
 *.db
+# SQLite's write-ahead log, which lives beside the database in WAL mode.
+*.db-shm
+*.db-wal
 
 # Logs
 *.log
