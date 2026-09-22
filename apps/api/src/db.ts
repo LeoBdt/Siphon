@@ -370,6 +370,34 @@ export function dailyDownloadsFor(
   }[];
 }
 
+/**
+ * What was downloaded, by quality preset.
+ *
+ * The one breakdown of a library that says something you cannot see by looking
+ * at it: whether the disk is full of 4K video or of audio tracks, and
+ * therefore what changing the default preset would actually save.
+ */
+export function presetBreakdownFor(
+  userId: string,
+): { preset: string; count: number; bytes: number }[] {
+  return db
+    .prepare(
+      `SELECT preset,
+              COUNT(*)                                     AS count,
+              COALESCE(SUM(CASE WHEN status = 'completed'
+                                THEN fileSizeBytes END), 0) AS bytes
+         FROM downloads
+        WHERE userId = ? AND isPlaylistParent = 0
+        GROUP BY preset
+        ORDER BY bytes DESC`,
+    )
+    .all(userId) as unknown as {
+    preset: string;
+    count: number;
+    bytes: number;
+  }[];
+}
+
 export function downloadStatsFor(userId: string): {
   total: number;
   completed: number;

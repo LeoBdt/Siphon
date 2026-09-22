@@ -680,6 +680,13 @@ export interface UserStats {
    * simply skips quiet days draws a busier picture than the truth.
    */
   daily: { date: string; count: number; bytes: number }[];
+  /**
+   * What was downloaded, by quality preset, heaviest first.
+   *
+   * Counts every job ever run, not only the window the chart covers: this is
+   * a description of the library, not of the month.
+   */
+  byPreset: { preset: QualityPresetId; count: number; bytes: number }[];
 }
 
 /** Why a sign-in was refused, when the reason is worth telling the user. */

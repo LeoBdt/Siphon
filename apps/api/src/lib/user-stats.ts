@@ -1,7 +1,11 @@
 import { join } from "node:path";
 import type { User, UserStats } from "@app/shared";
 import { config } from "../config.js";
-import { dailyDownloadsFor, downloadStatsFor } from "../db.js";
+import {
+  dailyDownloadsFor,
+  downloadStatsFor,
+  presetBreakdownFor,
+} from "../db.js";
 import { dirUsage } from "./dir-size.js";
 import { concurrencyCeiling, getMaxConcurrent } from "../downloads-manager.js";
 
@@ -32,12 +36,15 @@ function fillDays(
 }
 
 export async function statsFor(user: User): Promise<UserStats> {
-  // Someone who browses the whole library has no folder of their own, so their
-  // disk usage is the instance's — reported by the shared gauge, not here.
+  // Someone who browses the whole library has no folder of their own, so what
+  // they occupy *is* the library. Measured rather than skipped: reporting
+  // "the whole library" in place of a figure answered a different question
+  // from the one asked, and an administrator wanting to know how full the
+  // disk is had nowhere to look.
   const scoped = !user.effective.canBrowseWholeLibrary;
-  const usage = scoped
-    ? await dirUsage(join(config.rootDir, "users", user.libraryDir))
-    : { bytes: 0, files: 0, folders: 0 };
+  const usage = await dirUsage(
+    scoped ? join(config.rootDir, "users", user.libraryDir) : config.rootDir,
+  );
 
   // The instance's own concurrency is a ceiling over anyone's: granting an
   // account more than the queue will ever run at once promises nothing.
@@ -56,6 +63,7 @@ export async function statsFor(user: User): Promise<UserStats> {
     maxConcurrentDownloads: effectiveConcurrency,
     concurrencyCappedByInstance: own != null && own > instance,
     daily: fillDays(dailyDownloadsFor(user.id, STATS_DAYS), STATS_DAYS),
+    byPreset: presetBreakdownFor(user.id) as UserStats["byPreset"],
     ...downloadStatsFor(user.id),
   };
 }

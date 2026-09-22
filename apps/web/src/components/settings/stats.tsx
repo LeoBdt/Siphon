@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/card";
 import { useI18n } from "@/components/i18n-provider";
 import { useMyStats } from "@/lib/hooks";
-import { formatBytes, formatDate } from "@/lib/format";
+import { formatBytes, formatDate, formatRelative } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 /**
@@ -43,7 +43,9 @@ export function StatsTab() {
           <>
             <Figures stats={stats} />
             <Allowances stats={stats} />
+            <VolumeChart stats={stats} />
             <DailyChart stats={stats} />
+            <PresetBreakdown stats={stats} />
           </>
         )}
       </CardContent>
@@ -78,8 +80,15 @@ function Figures({ stats }: { stats: UserStats }) {
       <Figure
         icon={<HardDrive className="size-3.5" />}
         label={u.diskUsed}
-        value={stats.scoped ? formatBytes(stats.diskBytes, intl) : u.wholeLibrary}
-        hint={stats.scoped ? s.fileCount(stats.fileCount) : undefined}
+        // Always a figure. "Whole library" was an answer to a different
+        // question: for someone who browses everything, what they occupy is
+        // the library, and the size of it is exactly what was being asked.
+        value={formatBytes(stats.diskBytes, intl)}
+        hint={
+          stats.scoped
+            ? s.fileCount(stats.fileCount)
+            : `${u.wholeLibrary} · ${s.fileCount(stats.fileCount)}`
+        }
       />
       <Figure
         label={u.downloadCount}
@@ -88,8 +97,17 @@ function Figures({ stats }: { stats: UserStats }) {
       />
       <Figure
         label={u.lastDownload}
+        // Relative, because a full date and time did not fit the tile and was
+        // being cut off mid-way — "22/09/26 23…" answers nothing.
         value={
-          stats.lastDownloadAt ? formatDate(stats.lastDownloadAt, intl) : u.never
+          stats.lastDownloadAt
+            ? formatRelative(stats.lastDownloadAt, intl)
+            : u.never
+        }
+        title={
+          stats.lastDownloadAt
+            ? formatDate(stats.lastDownloadAt, intl)
+            : undefined
         }
       />
     </dl>
@@ -101,11 +119,14 @@ function Figure({
   label,
   value,
   hint,
+  title,
 }: {
   icon?: React.ReactNode;
   label: string;
   value: string;
   hint?: string;
+  /** The precise version of an abbreviated value, on hover. */
+  title?: string;
 }) {
   return (
     <div className="flex flex-col gap-0.5 rounded-xl border bg-card p-3">
@@ -114,7 +135,9 @@ function Figure({
         {label}
       </dt>
       {/* Tabular figures so a row of these does not jitter as they update. */}
-      <dd className="truncate text-lg font-semibold tabular-nums">{value}</dd>
+      <dd className="truncate text-lg font-semibold tabular-nums" title={title}>
+        {value}
+      </dd>
       {hint && <dd className="text-xs text-muted-foreground">{hint}</dd>}
     </div>
   );
@@ -138,7 +161,7 @@ function Allowances({ stats }: { stats: UserStats }) {
   const u = t.settings.users;
 
   const quota = stats.quotaBytes;
-  const used = stats.scoped ? stats.diskBytes : 0;
+  const used = stats.diskBytes;
   const ratio = quota ? Math.min(1, used / quota) : 0;
   // Three bands rather than a gradient: the colour is there to say "you are
   // close", which is a decision, not a measurement.
@@ -149,7 +172,7 @@ function Allowances({ stats }: { stats: UserStats }) {
     <div className="flex flex-col gap-3">
       <h4 className="text-sm font-semibold">{s.allowances}</h4>
 
-      {quota != null && stats.scoped ? (
+      {quota != null ? (
         <div className="flex flex-col gap-1.5">
           <div className="flex items-baseline justify-between gap-2 text-sm">
             <span>{u.limits.quotaBytes}</span>
@@ -314,6 +337,165 @@ function DailyChart({ stats }: { stats: UserStats }) {
       <div className="flex justify-between text-xs text-muted-foreground">
         <span>{s.daysAgo(days.length)}</span>
         <span>{s.today}</span>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Volume over time
+// ---------------------------------------------------------------------------
+
+/**
+ * How the downloaded volume has built up over the month.
+ *
+ * Deliberately *downloaded*, not *occupied*: nothing records how much disk was
+ * in use last Tuesday, and a curve that pretended to would drop every time a
+ * file was deleted — except it cannot, because deletions are not recorded
+ * either. This is the total fetched, which only ever rises, and the label
+ * says so. A curve of real disk usage needs a daily snapshot kept from now on.
+ *
+ * An area under the line, because the quantity is an accumulation: the filled
+ * region is the volume itself, not decoration.
+ */
+function VolumeChart({ stats }: { stats: UserStats }) {
+  const { t, intl } = useI18n();
+  const s = t.settings.stats;
+  const [hovered, setHovered] = useState<number | null>(null);
+
+  // Running total, so the curve answers "how much by then" rather than "how
+  // much that day" — which is the bar chart below. Reduced rather than
+  // accumulated into a variable: nothing outside this expression may see a
+  // half-built total.
+  const points = stats.daily.reduce<{ date: string; total: number }[]>(
+    (acc, d) => [
+      ...acc,
+      { date: d.date, total: (acc[acc.length - 1]?.total ?? 0) + d.bytes },
+    ],
+    [],
+  );
+  const running = points[points.length - 1]?.total ?? 0;
+  const peak = Math.max(1, running);
+  const width = 300;
+  const active = hovered !== null ? points[hovered] : null;
+
+  if (running === 0) return null;
+
+  const x = (i: number) => (i / Math.max(1, points.length - 1)) * width;
+  const y = (v: number) => CHART_HEIGHT - (v / peak) * (CHART_HEIGHT - 6) - 3;
+  const line = points.map((p, i) => `${i === 0 ? "M" : "L"}${x(i)},${y(p.total)}`).join(" ");
+  const area = `${line} L${width},${CHART_HEIGHT} L0,${CHART_HEIGHT} Z`;
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-baseline justify-between gap-2">
+        <h4 className="text-sm font-semibold">{s.volumeTitle}</h4>
+        <span className="text-xs tabular-nums text-muted-foreground">
+          {active
+            ? `${active.date} · ${formatBytes(active.total, intl)}`
+            : formatBytes(running, intl)}
+        </span>
+      </div>
+
+      <svg
+        viewBox={`0 0 ${width} ${CHART_HEIGHT}`}
+        className="h-24 w-full"
+        preserveAspectRatio="none"
+        role="img"
+        aria-label={s.volumeTitle}
+        onPointerLeave={() => setHovered(null)}
+      >
+        <path d={area} className="fill-primary/15" />
+        <path
+          d={line}
+          fill="none"
+          className="stroke-primary"
+          strokeWidth={2}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+          vectorEffect="non-scaling-stroke"
+        />
+        {active && hovered !== null && (
+          <>
+            <line
+              x1={x(hovered)}
+              x2={x(hovered)}
+              y1={0}
+              y2={CHART_HEIGHT}
+              className="stroke-border"
+              strokeWidth={1}
+              vectorEffect="non-scaling-stroke"
+            />
+            {/* A ring in the surface colour, so the marker reads as sitting on
+                the line rather than as a hole in it. */}
+            <circle
+              cx={x(hovered)}
+              cy={y(active.total)}
+              r={4}
+              className="fill-primary stroke-card"
+              strokeWidth={2}
+              vectorEffect="non-scaling-stroke"
+            />
+          </>
+        )}
+        {points.map((p, i) => (
+          <rect
+            key={p.date}
+            x={x(i) - width / points.length / 2}
+            y={0}
+            width={width / points.length}
+            height={CHART_HEIGHT}
+            fill="transparent"
+            onPointerEnter={() => setHovered(i)}
+          />
+        ))}
+      </svg>
+      <p className="text-xs text-muted-foreground">{s.volumeHint}</p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Breakdown by quality
+// ---------------------------------------------------------------------------
+
+/**
+ * Which qualities the library is actually made of.
+ *
+ * Horizontal bars rather than a pie: at five or six slices a pie is a puzzle,
+ * and these want comparing, which is what a shared baseline is for. Sorted
+ * heaviest first, so the row that explains the disk is the first one read.
+ */
+function PresetBreakdown({ stats }: { stats: UserStats }) {
+  const { t, intl } = useI18n();
+  const s = t.settings.stats;
+  const rows = stats.byPreset.filter((p) => p.bytes > 0);
+  if (rows.length === 0) return null;
+  const peak = Math.max(...rows.map((r) => r.bytes));
+
+  return (
+    <div className="flex flex-col gap-2">
+      <h4 className="text-sm font-semibold">{s.presetTitle}</h4>
+      <div className="flex flex-col gap-1.5">
+        {rows.map((row) => (
+          <div key={row.preset} className="flex items-center gap-3 text-xs">
+            <span className="w-24 shrink-0 truncate uppercase">
+              {t.quality.presets[row.preset]?.label ?? row.preset}
+            </span>
+            <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-primary/70"
+                style={{ width: `${Math.max((row.bytes / peak) * 100, 2)}%` }}
+              />
+            </div>
+            <span className="w-20 shrink-0 text-right tabular-nums text-muted-foreground">
+              {formatBytes(row.bytes, intl)}
+            </span>
+            <span className="w-10 shrink-0 text-right tabular-nums text-muted-foreground">
+              {row.count}
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   );
