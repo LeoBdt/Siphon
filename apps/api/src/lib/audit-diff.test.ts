@@ -34,6 +34,15 @@ test("skipped fields are never recorded", () => {
   );
 });
 
+test("a key the patch did not carry is not a change", () => {
+  // `{ name: body.name }` on a body with no name: the field was not touched,
+  // and reporting it as cleared would be a lie in the register.
+  assert.deepEqual(
+    diffFields({ name: "Members" }, { name: undefined, canDownload: true }),
+    [{ field: "canDownload", from: null, to: "true" }],
+  );
+});
+
 test("nothing to compare yields nothing", () => {
   assert.deepEqual(diffFields(undefined, undefined), []);
 });

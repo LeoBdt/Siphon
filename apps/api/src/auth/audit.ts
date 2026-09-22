@@ -29,6 +29,31 @@ try {
   /* column already exists */
 }
 
+/**
+ * Remove changes that describe something impossible.
+ *
+ * A short-lived bug recorded "name: Members → nothing" on every group edit,
+ * because the comparison treated a key the patch never carried as a field
+ * cleared to null. A group cannot be renamed to nothing, so any such entry is
+ * an artefact rather than a record, and leaving it in makes the log lie about
+ * what people did. Runs once at boot and finds nothing thereafter.
+ */
+db.prepare(
+  `UPDATE audit
+      SET details = json_remove(
+            details,
+            (SELECT fullkey FROM json_each(audit.details)
+              WHERE json_extract(value, '$.field') = 'name'
+                AND json_extract(value, '$.to') IS NULL
+              LIMIT 1))
+    WHERE details IS NOT NULL
+      AND EXISTS (SELECT 1 FROM json_each(audit.details)
+                   WHERE json_extract(value, '$.field') = 'name'
+                     AND json_extract(value, '$.to') IS NULL)`,
+).run();
+// An entry list emptied by that removal has nothing left to unfold.
+db.prepare(`UPDATE audit SET details = NULL WHERE details = '[]'`).run();
+
 /** Entries older than this are dropped, so the table cannot grow forever. */
 const KEEP_DAYS = 180;
 

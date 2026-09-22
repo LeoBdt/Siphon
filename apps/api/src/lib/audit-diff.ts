@@ -37,6 +37,11 @@ export function diffFields(
   const changes: AuditChange[] = [];
   for (const [field, value] of Object.entries(next)) {
     if (skip.includes(field)) continue;
+    // A key carrying `undefined` was not part of the patch — a caller building
+    // `{ name: body.name }` from a body that had no name lands here. Recording
+    // it read as "Name: Members → unset", which is the opposite of what
+    // happened: nothing touched the name at all.
+    if (value === undefined) continue;
     const before = render(previous?.[field]);
     const after = render(value);
     if (before === after) continue;
