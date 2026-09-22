@@ -2,7 +2,7 @@
   "name": "siphon",
   "version": "0.4.0",
   "private": true,
-  "packageManager": "pnpm@11.13.0",
+  "packageManager": "pnpm@12.5.1",
   "scripts": {
     "dev": "concurrently --kill-others --names web,api --prefix-colors cyan,green \"pnpm --filter @app/web dev\" \"pnpm --filter @app/api dev\"",
     "dev:web": "pnpm --filter @app/web dev",
