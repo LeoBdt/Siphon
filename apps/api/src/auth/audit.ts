@@ -1,4 +1,4 @@
-import type { AuditAction, AuditEntry } from "@app/shared";
+import type { AuditAction, AuditChange, AuditEntry } from "@app/shared";
 import { db } from "../db.js";
 
 /**
@@ -21,6 +21,14 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_audit_at ON audit(at DESC);
 `);
 
+// Added after the initial schema: what actually changed, as JSON. Without it
+// the log could only ever say that somebody edited something.
+try {
+  db.exec(`ALTER TABLE audit ADD COLUMN details TEXT`);
+} catch {
+  /* column already exists */
+}
+
 /** Entries older than this are dropped, so the table cannot grow forever. */
 const KEEP_DAYS = 180;
 
@@ -30,10 +38,18 @@ export function record(entry: {
   actorName?: string | null;
   target?: string | null;
   ip?: string | null;
+  /**
+   * What changed, field by field.
+   *
+   * Frozen at the moment of the action, like the rest of the row: this is a
+   * register, and a register that re-reads the world every time it is
+   * displayed is not a record of anything.
+   */
+  details?: AuditChange[] | null;
 }): void {
   db.prepare(
-    `INSERT INTO audit (at, action, actorId, actorName, target, ip)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO audit (at, action, actorId, actorName, target, ip, details)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     new Date().toISOString(),
     entry.action,
@@ -41,6 +57,7 @@ export function record(entry: {
     entry.actorName ?? null,
     entry.target ?? null,
     entry.ip ?? null,
+    entry.details?.length ? JSON.stringify(entry.details) : null,
   );
 }
 
@@ -49,18 +66,34 @@ export function listAudit(limit = 100, before?: string): AuditEntry[] {
     before
       ? db
           .prepare(
-            `SELECT id, at, action, actorName, target, ip FROM audit
+            `SELECT id, at, action, actorName, target, ip, details FROM audit
              WHERE at < ? ORDER BY at DESC LIMIT ?`,
           )
           .all(before, limit)
       : db
           .prepare(
-            `SELECT id, at, action, actorName, target, ip FROM audit
+            `SELECT id, at, action, actorName, target, ip, details FROM audit
              ORDER BY at DESC LIMIT ?`,
           )
           .all(limit)
-  ) as unknown as AuditEntry[];
-  return rows;
+  ) as unknown as (Omit<AuditEntry, "details"> & { details: string | null })[];
+
+  return rows.map((row) => ({
+    ...row,
+    // Rows written before the column existed have none, and a row whose JSON
+    // cannot be read is reported as having no detail rather than breaking the
+    // page it appears on.
+    details: row.details ? safeParse(row.details) : null,
+  }));
+}
+
+function safeParse(json: string): AuditChange[] | null {
+  try {
+    const parsed = JSON.parse(json);
+    return Array.isArray(parsed) ? (parsed as AuditChange[]) : null;
+  } catch {
+    return null;
+  }
 }
 
 export function pruneAudit(): void {
